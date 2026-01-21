@@ -32,6 +32,7 @@ def collect_github() -> Dict[str, Any]:
       'repo:ORG/REPO workaround in:body is:issue'
     """
     log = get_dagster_logger()
+    log.info("Starting GitHub collector qwd qwd qwd qd qdq d wd qwd ")
     cfg = collect_github.config
     token = os.getenv("GITHUB_TOKEN")
     if not token:
