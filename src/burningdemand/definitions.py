@@ -1,9 +1,9 @@
 from dagster import Definitions, job
 
-from burningdemand.collectors.github import collect_github
-from burningdemand.collectors.hackernews import collect_hackernews
-from burningdemand.collectors.reddit import collect_reddit
-from burningdemand.collectors.stackoverflow import collect_stackoverflow
+from burningdemand.defs.collectors.github import collect_github
+from burningdemand.defs.collectors.hackernews import collect_hackernews
+from burningdemand.defs.collectors.reddit import collect_reddit
+from burningdemand.defs.collectors.stackoverflow import collect_stackoverflow
 
 
 # ----------------------------

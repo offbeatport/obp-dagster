@@ -3,13 +3,13 @@ from typing import Any, Dict
 
 from dagster import Array, Field, Int, String, get_dagster_logger, op
 
-from .common import COMMON_RETRY
-from .utils import (
+from burningdemand.defs.common import COMMON_RETRY
+from burningdemand.defs.utils import (
     http_get_json,
     make_content_hash_with_updated,
     normalize_text,
 )
-from burningdemand.pb import pb_client_from_env
+from burningdemand.defs.pb import pb_client_from_env
 
 
 @op(
@@ -64,8 +64,6 @@ def collect_github(context) -> Dict[str, Any]:
         items = data.get("items") or []
 
         for it in items:
-            println(it)
-            return stats
             if stats["fetched"] >= max_total:
                 break
 

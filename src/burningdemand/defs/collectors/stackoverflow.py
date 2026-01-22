@@ -4,15 +4,15 @@ from typing import Any, Dict
 
 from dagster import Array, Field, Int, String, get_dagster_logger, op
 
-from .common import COMMON_RETRY
-from .utils import (
+from burningdemand.defs.common import COMMON_RETRY
+from burningdemand.defs.utils import (
     http_get_json,
     iso_from_unix,
     keyword_hit,
     make_content_hash,
     normalize_text,
 )
-from burningdemand.pb import pb_client_from_env
+from burningdemand.defs.pb import pb_client_from_env
 
 
 @op(
