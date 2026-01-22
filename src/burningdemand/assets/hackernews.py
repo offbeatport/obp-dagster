@@ -12,7 +12,7 @@ from .utils import (
     normalize_text,
     strip_hn_html,
 )
-from burningdemand.resources import PocketBaseResource
+from ..resources import PocketBaseResource
 
 
 class HackerNewsCollectorConfig(Config):

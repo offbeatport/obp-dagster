@@ -62,7 +62,7 @@ def github_issues(
         data = http_get_json(
             "https://api.github.com/search/issues", headers=headers, params=params)
         items = data.get("items") or []
-
+        print(items)
         for it in items:
             if stats["fetched"] >= max_total:
                 break

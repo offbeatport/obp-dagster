@@ -1,3 +1,3 @@
-from burningdemand.resources.pocketbase import PocketBaseResource
+from .pocketbase import PocketBaseResource
 
 __all__ = ["PocketBaseResource"]

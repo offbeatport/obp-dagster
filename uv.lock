@@ -1145,13 +1145,11 @@ wheels = [
 ]
 
 [[package]]
-name = "offbeatport-dagster"
+name = "obp-dagster"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dagster" },
-    { name = "dagster-webserver" },
-    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -1161,11 +1159,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "dagster", specifier = "==1.12.11" },
-    { name = "dagster-webserver" },
-    { name = "requests" },
-]
+requires-dist = [{ name = "dagster", specifier = "==1.12.11" }]
 
 [package.metadata.requires-dev]
 dev = [
