@@ -42,8 +42,7 @@ def reddit_posts(
     limit = min(config.limit, 100)
     keywords = config.keywords or []
 
-    headers = {
-        "User-Agent": os.getenv("REDDIT_USER_AGENT", "BurningDemand/1.0")}
+    headers = { "User-Agent": "BurningDemand/1.0"}
 
     stats = {"fetched": 0, "matched": 0,
              "created": 0, "updated": 0, "skipped": 0}

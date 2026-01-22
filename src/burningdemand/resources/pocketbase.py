@@ -15,13 +15,11 @@ class PocketBaseClient:
     def __init__(
         self,
         base_url: str,
-        auth_collection: str,
         email: str,
         password: str,
         timeout_s: int = 20,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.auth_collection = auth_collection
         self.email = email
         self.password = password
         self.timeout_s = timeout_s
@@ -34,7 +32,7 @@ class PocketBaseClient:
         return headers
 
     def login(self) -> None:
-        url = f"{self.base_url}/api/collections/{self.auth_collection}/auth-with-password"
+        url = f"{self.base_url}/api/collections/users/auth-with-password"
         resp = requests.post(
             url,
             headers={"Content-Type": "application/json"},
@@ -110,7 +108,6 @@ class PocketBaseResource(ConfigurableResource):
     """Dagster resource for PocketBase client."""
 
     base_url: str
-    auth_collection: str = "users"
     email: str
     password: str
     timeout_s: int = 20
@@ -120,7 +117,6 @@ class PocketBaseResource(ConfigurableResource):
         if not hasattr(self, "_pb_client"):
             client = PocketBaseClient(
                 base_url=self.base_url,
-                auth_collection=self.auth_collection,
                 email=self.email,
                 password=self.password,
                 timeout_s=self.timeout_s,
@@ -151,14 +147,12 @@ class PocketBaseResource(ConfigurableResource):
         pb_url = os.getenv("PB_URL", "http://127.0.0.1:8090")
         pb_email = os.getenv("PB_WORKER_EMAIL")
         pb_password = os.getenv("PB_WORKER_PASSWORD")
-        auth_collection = os.getenv("PB_AUTH_COLLECTION", "users")
 
         if not pb_email or not pb_password:
             raise RuntimeError("Missing PB_WORKER_EMAIL / PB_WORKER_PASSWORD env vars.")
 
         return cls(
             base_url=pb_url,
-            auth_collection=auth_collection,
             email=pb_email,
             password=pb_password,
         )

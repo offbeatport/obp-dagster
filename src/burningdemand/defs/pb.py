@@ -14,13 +14,11 @@ class PocketBaseClient:
     def __init__(
         self,
         base_url: str,
-        auth_collection: str,
         email: str,
         password: str,
         timeout_s: int = 20,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.auth_collection = auth_collection
         self.email = email
         self.password = password
         self.timeout_s = timeout_s
@@ -33,7 +31,7 @@ class PocketBaseClient:
         return headers
 
     def login(self) -> None:
-        url = f"{self.base_url}/api/collections/{self.auth_collection}/auth-with-password"
+        url = f"{self.base_url}/api/collections/users/auth-with-password"
         resp = requests.post(
             url,
             headers={"Content-Type": "application/json"},
@@ -109,11 +107,10 @@ def pb_client_from_env() -> PocketBaseClient:
     pb_url = os.getenv("PB_URL", "http://127.0.0.1:8090")
     pb_email = os.getenv("PB_WORKER_EMAIL")
     pb_password = os.getenv("PB_WORKER_PASSWORD")
-    auth_collection = os.getenv("PB_AUTH_COLLECTION", "users")
 
     if not pb_email or not pb_password:
         raise RuntimeError("Missing PB_WORKER_EMAIL / PB_WORKER_PASSWORD env vars.")
 
-    client = PocketBaseClient(pb_url, auth_collection, pb_email, pb_password)
+    client = PocketBaseClient(pb_url, pb_email, pb_password)
     client.login()
     return client
