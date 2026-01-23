@@ -25,15 +25,14 @@ build-backend = "hatchling.build"
 packages = ["src/burningdemand"]
 force-include = { "pyproject.toml" = "pyproject.toml" }
 
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+skip-string-normalization = false
+
 [tool.dg]
 directory_type = "project"
 
 [tool.dg.project]
-root_module = "obp-dagster.burningdemand"
-registry_modules = ["obp_dagster.burningdemand.*"]
-
-
-[tool.black]
-line-length = 88                  # Black default (PEP 8 says 79, but 88 is widely accepted)
-target-version = ["py39"]
-skip-string-normalization = false
+root_module = "burningdemand"
+registry_modules = ["burningdemand.*"]
