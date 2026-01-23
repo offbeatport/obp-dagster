@@ -1,17 +1,21 @@
-from dagster import Definitions
+# burningdemand_dagster/definitions.py
+from dagster import Definitions, load_assets_from_package_module
 
-from .assets.github import github_issues
-from .assets.hackernews import hackernews_stories
-from .assets.reddit import reddit_posts
-from .assets.stackoverflow import stackoverflow_questions
-from .resources.pocketbase import PocketBaseResource
+from .assets import assets as assets_pkg
 
+from .resources.duckdb_resource import DuckDBResource
+from .resources.embedding_resource import EmbeddingResource
+from .resources.external_apis_resource import ExternalAPIsResource
+from .resources.http_clients_resource import HTTPClientsResource
+
+all_assets = load_assets_from_package_module(assets_pkg)
 
 defs = Definitions(
-    assets=[github_issues, hackernews_stories, reddit_posts, stackoverflow_questions],
+    assets=all_assets,
     resources={
-        "pb": PocketBaseResource.from_env(),
+        "db": DuckDBResource(),
+        "embedding": EmbeddingResource(),
+        "apis": ExternalAPIsResource(),
+        "http": HTTPClientsResource(),
     },
 )
-
-
