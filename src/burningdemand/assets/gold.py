@@ -7,9 +7,8 @@ from dagster import AssetExecutionContext, MaterializeResult, MetadataValue, ass
 from ..partitions import daily_partitions
 from ..resources.duckdb_resource import DuckDBResource
 from ..resources.app_config_resource import AppConfigResource
-from ..resources.http_clients_resource import HTTPClientsResource
+from ..resources.pocketbase_resource import PocketBaseResource
 from ..utils.llm_schema import IssueLabel, extract_first_json_obj
-from ..utils.retries import request_with_retry_async
 
 _SOURCE_TYPE_MAP = {
     "github": "github_issue",
@@ -189,8 +188,7 @@ Return ONLY valid JSON:
 async def pocketbase_synced_issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    apis: AppConfigResource,
-    http: HTTPClientsResource,
+    pb: PocketBaseResource,
 ) -> MaterializeResult:
     date = context.partition_key
 
@@ -212,78 +210,130 @@ async def pocketbase_synced_issues(
     if len(issues) == 0:
         return MaterializeResult(metadata={"synced": 0})
 
-    headers = {"Authorization": apis.pocketbase_admin_token}
-    aclient = http.aclient
-
     synced = 0
     ev_posted = 0
     ev_errors = 0
-    ev_sem = asyncio.Semaphore(20)
+    skipped = 0
 
-    async def post_evidence(issue_id: str, ev: dict):
-        nonlocal ev_posted, ev_errors
-        async with ev_sem:
-            try:
-                await request_with_retry_async(
-                    aclient,
-                    "POST",
-                    f"{apis.pocketbase_url}/api/collections/evidence/records",
-                    json={
-                        "issue": issue_id,
-                        "url": ev["url"],
-                        "source_type": _SOURCE_TYPE_MAP.get(ev["source"], "other"),
-                        "content_snippet": (ev.get("body") or "")[:500],
-                        "posted_at": ev["posted_at"],
-                    },
-                    headers=headers,
-                    timeout=10,
-                )
-                ev_posted += 1
-            except Exception:
-                ev_errors += 1
+    # Run PocketBase operations in executor since they're synchronous
+    loop = asyncio.get_event_loop()
+
+    def check_issue(pb_client, filter_expr):
+        return pb_client.get_one_by_filter("issues", filter_expr)
+
+    def create_issue(pb_client, payload):
+        return pb_client.create("issues", payload)
+
+    def check_evidence(pb_client, filter_expr):
+        return pb_client.get_one_by_filter("evidence", filter_expr)
+
+    def create_evidence(pb_client, payload):
+        return pb_client.create("evidence", payload)
 
     for _, issue in issues.iterrows():
-        # Create issue
-        try:
-            resp = await request_with_retry_async(
-                aclient,
-                "POST",
-                f"{apis.pocketbase_url}/api/collections/issues/records",
-                json={
-                    "title": issue["canonical_title"],
-                    "description": issue["description"],
-                    "category": issue["category"],
+        # Check if issue already exists (might have been created manually)
+        # Use a unique identifier based on cluster_date and cluster_id
+        cluster_id = int(issue["cluster_id"])
+        issue_title = str(issue["canonical_title"])
+        issue_desc = str(issue["description"])
+        issue_cat = str(issue["category"])
+        
+        # Check for existing issue by cluster_date and cluster_id
+        # Escape quotes in filter expression for PocketBase
+        date_escaped = str(date).replace('"', '\\"')
+        filter_expr = f'origin="collected" && cluster_date="{date_escaped}" && cluster_id={cluster_id}'
+        existing_issue = await loop.run_in_executor(
+            None,
+            check_issue,
+            pb,
+            filter_expr,
+        )
+
+        if existing_issue:
+            issue_id = existing_issue["id"]
+            skipped += 1
+        else:
+            # Create new issue
+            try:
+                issue_payload = {
+                    "title": issue_title,
+                    "description": issue_desc,
+                    "category": issue_cat,
                     "status": "open",
                     "origin": "collected",
-                },
-                headers=headers,
-                timeout=30,
-            )
-            issue_id = resp.json()["id"]
-        except Exception:
-            continue
+                    "cluster_date": date,
+                    "cluster_id": cluster_id,
+                }
+                issue_record = await loop.run_in_executor(
+                    None,
+                    create_issue,
+                    pb,
+                    issue_payload,
+                )
+                issue_id = issue_record["id"]
+            except Exception as e:
+                context.log.warning(f"Failed to create issue for cluster {cluster_id}: {e}")
+                continue
 
+        # Get evidence for this issue
         evidence = db.query_df(
             """
             SELECT source, url, body, posted_at
             FROM gold_issue_evidence
             WHERE cluster_date = ? AND cluster_id = ?
             """,
-            [date, int(issue["cluster_id"])],
+            [date, cluster_id],
         ).to_dict(orient="records")
 
-        await asyncio.gather(*[post_evidence(issue_id, ev) for ev in evidence])
+        # Create evidence records (check for duplicates by URL to avoid conflicts with manual entries)
+        for ev in evidence:
+            try:
+                ev_url = str(ev["url"])
+                ev_source = str(ev.get("source", ""))
+                ev_body = str(ev.get("body", ""))[:500]
+                ev_posted_at = str(ev.get("posted_at", ""))
+                
+                # Check if evidence already exists for this issue and URL
+                # Escape quotes in URL for PocketBase filter (PocketBase uses \" for escaped quotes)
+                ev_url_escaped = ev_url.replace('"', '\\"')
+                evidence_filter = f'issue="{issue_id}" && url="{ev_url_escaped}"'
+                existing_evidence = await loop.run_in_executor(
+                    None,
+                    check_evidence,
+                    pb,
+                    evidence_filter,
+                )
+
+                if not existing_evidence:
+                    evidence_payload = {
+                        "issue": issue_id,
+                        "url": ev_url,
+                        "source_type": _SOURCE_TYPE_MAP.get(ev_source, "other"),
+                        "content_snippet": ev_body,
+                        "posted_at": ev_posted_at,
+                    }
+                    await loop.run_in_executor(
+                        None,
+                        create_evidence,
+                        pb,
+                        evidence_payload,
+                    )
+                    ev_posted += 1
+            except Exception as e:
+                context.log.warning(f"Failed to create evidence for issue {issue_id}: {e}")
+                ev_errors += 1
 
         # Track sync
         db.execute(
             "INSERT INTO pocketbase_sync (cluster_date, cluster_id, issue_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-            [date, int(issue["cluster_id"]), issue_id],
+            [date, cluster_id, issue_id],
         )
         synced += 1
 
     return MaterializeResult(
         metadata={
             "synced": int(synced),
+            "skipped": int(skipped),
             "issues_considered": int(len(issues)),
             "evidence_posted": int(ev_posted),
             "evidence_errors": int(ev_errors),

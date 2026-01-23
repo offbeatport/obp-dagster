@@ -12,7 +12,7 @@ from pydantic import Field
 
 class DuckDBResource(ConfigurableResource):
     db_path: str = Field(default="./data/burningdemand.duckdb")
-    schema_path: str = Field(default="burningdemand_dagster/sql/schema.sql")
+    schema_path: str = Field(default="src/burningdemand/schema/duckdb.sql")
 
     def setup_for_execution(self, context) -> None:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)

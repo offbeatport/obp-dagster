@@ -1,16 +1,12 @@
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Tuple
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
-import httpx
 
 from ..utils.keywords import (
-    build_github_query,
     build_stackoverflow_tags,
     matches_keywords,
 )
-from ..utils.retries import request_with_retry_async
 from ..utils.url import iso_date_to_utc_bounds
 
 # ============================================================================
@@ -25,7 +21,8 @@ async def collect_source_async(
     source: str,
     date: str,
     apis,
-    client: httpx.AsyncClient,
+    http,
+    context,
 ) -> Tuple[List[Dict], Dict]:
     """
     Collect items for a single (source, date) partition.
@@ -45,25 +42,30 @@ async def collect_source_async(
         return await _collect_github(
             date=date,
             apis=apis,
-            client=client,
+            http=http,
+            context=context,
         )
 
     if source == "stackoverflow":
         return await _collect_stackoverflow(
             date=date,
             apis=apis,
-            client=client,
+            http=http,
+            context=context,
         )
 
     if source == "reddit":
         return await _collect_reddit(
             date=date,
             apis=apis,
-            client=client,
+            http=http,
+            context=context,
         )
 
     if source == "hackernews":
-        return await _collect_hackernews(date=date, apis=apis, client=client)
+        return await _collect_hackernews(
+            date=date, apis=apis, http=http, context=context
+        )
 
     return [], {"requests": 0, "note": f"unknown source={source}"}
 
@@ -76,47 +78,92 @@ async def collect_source_async(
 async def _collect_github(
     date: str,
     apis,
-    client: httpx.AsyncClient,
+    http,
+    context,
 ) -> Tuple[List[Dict], Dict]:
+    from ..utils.keywords import get_source_keywords
+
     headers = {"Authorization": f"token {apis.github_token}"}
     req_count = 0
 
-    # Build query using keywords
-    query = build_github_query(date)
+    # Get all keywords and split into chunks to avoid GitHub's 5 operator limit
+    # GitHub allows max 5 AND/OR/NOT operators, so we can use up to 6 keywords per query (5 ORs)
+    source_keywords = get_source_keywords("github")
+    chunk_size = 6  # 6 keywords = 5 OR operators
+    keyword_chunks = [
+        source_keywords[i : i + chunk_size]
+        for i in range(0, len(source_keywords), chunk_size)
+    ]
 
-    async def fetch_page(page: int):
+    # Build multiple queries, one per chunk
+    queries = []
+    for chunk in keyword_chunks:
+        keyword_query = " OR ".join([f'"{kw}"' for kw in chunk])
+        queries.append(f"is:issue created:{date} ({keyword_query})")
+
+    # Calculate estimated requests: up to 10 pages per query
+    max_pages_per_query = 10
+    estimated_requests = len(queries) * max_pages_per_query
+    context.log.info(
+        f"GitHub collection plan: {len(queries)} queries, "
+        f"up to {max_pages_per_query} pages each = ~{estimated_requests} requests max"
+    )
+
+    # Track seen URLs to deduplicate across queries
+    seen_urls = set()
+    all_items = []
+
+    async def fetch_query_pages(query: str):
+        """Fetch all pages for a single query."""
         nonlocal req_count
-        req_count += 1
-        resp = await request_with_retry_async(
-            client,
-            "GET",
-            "https://api.github.com/search/issues",
-            params={"q": query, "per_page": 100, "page": page},
-            headers=headers,
-        )
-        return resp.json().get("items", [])
+        query_items = []
+        for page in range(1, 11):  # GitHub allows up to 10 pages (1000 results max)
+            req_count += 1
+            resp = await http.request_with_retry_async(
+                "GET",
+                "https://api.github.com/search/issues",
+                params={"q": query, "per_page": 100, "page": page},
+                headers=headers,
+            )
+            page_items = resp.json().get("items", [])
+            if not page_items:  # No more results
+                break
+            query_items.extend(page_items)
 
-    pages = await asyncio.gather(*[fetch_page(p) for p in range(1, 11)])
-    items: List[Dict] = []
-    for page_items in pages:
-        for it in page_items:
+        return query_items
+
+    # Fetch all queries in parallel - rate limiting is handled in request_with_retry_async
+    all_query_results = await asyncio.gather(*[fetch_query_pages(q) for q in queries])
+
+    # Combine and deduplicate results
+    for query_results in all_query_results:
+        for it in query_results:
+            url = it.get("html_url")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+
             title = it.get("title") or ""
             body = it.get("body") or ""
             combined_text = f"{title} {body}".lower()
 
-            # Filter by keywords (GitHub query already includes keywords, but double-check)
+            # Filter by keywords (double-check)
             if not matches_keywords(combined_text, source="github"):
                 continue
 
-            items.append(
+            all_items.append(
                 {
-                    "url": it["html_url"],
+                    "url": url,
                     "title": title,
                     "body": body[:BODY_MAX_LENGTH],
                     "created_at": it.get("created_at") or "",
                 }
             )
-    return items, {"requests": req_count}
+
+    context.log.info(
+        f"GitHub collection completed: {req_count} requests made, {len(all_items)} items collected"
+    )
+    return all_items, {"requests": req_count, "queries": len(queries)}
 
 
 # -----------------------------------------------------------------------------
@@ -127,7 +174,8 @@ async def _collect_github(
 async def _collect_stackoverflow(
     date: str,
     apis,
-    client: httpx.AsyncClient,
+    http,
+    context,
 ) -> Tuple[List[Dict], Dict]:
     from_ts, to_ts = iso_date_to_utc_bounds(date)
     req_count = 0
@@ -137,6 +185,13 @@ async def _collect_stackoverflow(
 
     # StackExchange max is 100
     stackexchange_key = getattr(apis, "stackexchange_key", None)
+
+    # Calculate and log plan before making requests
+    max_pages = 10
+    estimated_requests = max_pages
+    context.log.info(
+        f"StackOverflow collection plan: {max_pages} pages = {estimated_requests} requests max"
+    )
 
     async def fetch_page(page: int):
         nonlocal req_count
@@ -156,8 +211,7 @@ async def _collect_stackoverflow(
         if stackexchange_key:
             params["key"] = stackexchange_key
 
-        resp = await request_with_retry_async(
-            client,
+        resp = await http.request_with_retry_async(
             "GET",
             "https://api.stackexchange.com/2.3/questions",
             params=params,
@@ -192,6 +246,9 @@ async def _collect_stackoverflow(
                 }
             )
 
+    context.log.info(
+        f"StackOverflow collection completed: {req_count} requests made, {len(items)} items collected"
+    )
     meta = {"requests": req_count, "used_key": bool(stackexchange_key)}
     return items, meta
 
@@ -204,7 +261,8 @@ async def _collect_stackoverflow(
 async def _collect_reddit(
     date: str,
     apis,
-    client: httpx.AsyncClient,
+    http,
+    context,
 ) -> Tuple[List[Dict], Dict]:
     from_ts, to_ts = iso_date_to_utc_bounds(date)
     req_count = 0
@@ -213,6 +271,14 @@ async def _collect_reddit(
     reddit_client_secret = getattr(apis, "reddit_client_secret", None)
     reddit_user_agent = getattr(apis, "reddit_user_agent", "BurningDemand/0.1")
     limit = 100
+
+    # Calculate and log plan before making requests
+    oauth_request = 1 if (reddit_client_id and reddit_client_secret) else 0
+    subreddit_requests = len(subs)
+    estimated_requests = oauth_request + subreddit_requests
+    context.log.info(
+        f"Reddit collection plan: {len(subs)} subreddits + {oauth_request} OAuth token = {estimated_requests} requests"
+    )
 
     async def get_oauth_token() -> Optional[str]:
         """
@@ -224,8 +290,7 @@ async def _collect_reddit(
 
         req_count += 1
         auth = (reddit_client_id, reddit_client_secret)
-        resp = await request_with_retry_async(
-            client,
+        resp = await http.request_with_retry_async(
             "POST",
             "https://www.reddit.com/api/v1/access_token",
             auth=auth,
@@ -250,8 +315,7 @@ async def _collect_reddit(
     async def fetch_sub(sub: str):
         nonlocal req_count
         req_count += 1
-        resp = await request_with_retry_async(
-            client,
+        resp = await http.request_with_retry_async(
             "GET",
             f"{base}/r/{sub}/new",
             params={"limit": limit},
@@ -286,6 +350,9 @@ async def _collect_reddit(
                     }
                 )
 
+    context.log.info(
+        f"Reddit collection completed: {req_count} requests made, {len(items)} items collected"
+    )
     meta = {
         "requests": req_count,
         "subs": subs,
@@ -303,16 +370,23 @@ async def _collect_reddit(
 async def _collect_hackernews(
     date: str,
     apis,
-    client: httpx.AsyncClient,
+    http,
+    context,
 ) -> Tuple[List[Dict], Dict]:
     from_ts, to_ts = iso_date_to_utc_bounds(date)
     req_count = 0
 
+    # Calculate and log plan before making requests
+    max_pages = 10
+    estimated_requests = max_pages
+    context.log.info(
+        f"HackerNews collection plan: {max_pages} pages = {estimated_requests} requests max"
+    )
+
     async def fetch_page(page: int):
         nonlocal req_count
         req_count += 1
-        resp = await request_with_retry_async(
-            client,
+        resp = await http.request_with_retry_async(
             "GET",
             "https://hn.algolia.com/api/v1/search_by_date",
             params={
@@ -355,4 +429,7 @@ async def _collect_hackernews(
                 }
             )
 
+    context.log.info(
+        f"HackerNews collection completed: {req_count} requests made, {len(items)} items collected"
+    )
     return items, {"requests": req_count}

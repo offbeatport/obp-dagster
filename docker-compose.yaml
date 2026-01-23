@@ -12,8 +12,8 @@ services:
     environment:
       - DAGSTER_HOME=/opt/dagster/dagster_home
       - PB_URL=${PB_URL:-http://127.0.0.1:8090}
-      - PB_WORKER_EMAIL=${PB_WORKER_EMAIL}
-      - PB_WORKER_PASSWORD=${PB_WORKER_PASSWORD}
+      - PB_EMAIL=${PB_EMAIL}
+      - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
     volumes:
@@ -42,8 +42,8 @@ services:
     environment:
       - DAGSTER_HOME=/opt/dagster/dagster_home
       - PB_URL=${PB_URL:-http://127.0.0.1:8090}
-      - PB_WORKER_EMAIL=${PB_WORKER_EMAIL}
-      - PB_WORKER_PASSWORD=${PB_WORKER_PASSWORD}
+      - PB_EMAIL=${PB_EMAIL}
+      - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
     volumes:

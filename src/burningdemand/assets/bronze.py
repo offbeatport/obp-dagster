@@ -19,7 +19,7 @@ async def bronze_raw_items(
     source = context.partition_key.keys_by_dimension["source"]
     date = context.partition_key.keys_by_dimension["date"]
 
-    items, meta = await collect_source_async(source, date, apis, http.aclient)
+    items, meta = await collect_source_async(source, date, apis, http, context)
 
     if not items:
         return MaterializeResult(
