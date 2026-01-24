@@ -1,17 +1,14 @@
 import pandas as pd
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
-import pandas as pd
-from dagster import AssetExecutionContext, MaterializeResult, asset
-
 from ..partitions import source_day_partitions
 from ..resources.collectors.collectors_resource import CollectorsResource
 from ..resources.duckdb_resource import DuckDBResource
 from ..utils.url import normalize_url, url_hash
 
 
-@asset(partitions_def=source_day_partitions, compute_kind="io", group_name="bronze")
-async def bronze_raw_items(
+@asset(partitions_def=source_day_partitions, group_name="bronze")
+async def raw_items(
     context: AssetExecutionContext,
     db: DuckDBResource,
     collector: CollectorsResource,
@@ -48,7 +45,7 @@ async def bronze_raw_items(
     df["created_at"] = df["created_at"].fillna("").astype("object")
 
     inserted_attempt = db.insert_df(
-        "bronze_raw_items",
+        "raw",
         df,
         ["url_hash", "source", "collection_date", "url", "title", "body", "created_at"],
     )

@@ -1,6 +1,6 @@
 -- burningdemand_dagster/sql/schema.sql
 
-CREATE TABLE IF NOT EXISTS bronze_raw_items (
+CREATE TABLE IF NOT EXISTS raw_items (
     url_hash        VARCHAR PRIMARY KEY,
     source          VARCHAR,
     collection_date DATE,
@@ -11,41 +11,32 @@ CREATE TABLE IF NOT EXISTS bronze_raw_items (
     collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_bronze_date
-    ON bronze_raw_items(collection_date);
+CREATE INDEX IF NOT EXISTS idx_raw_items_date
+    ON raw_items(collection_date);
 
-CREATE INDEX IF NOT EXISTS idx_bronze_source_date
-    ON bronze_raw_items(source, collection_date);
+CREATE INDEX IF NOT EXISTS idx_raw_items_source_date
+    ON raw_items(source, collection_date);
 
-CREATE TABLE IF NOT EXISTS silver_items_with_embeddings (
+CREATE TABLE IF NOT EXISTS embeddings (
     url_hash        VARCHAR PRIMARY KEY,
-    source          VARCHAR,
-    collection_date DATE,
-    url             VARCHAR,
-    title           VARCHAR,
-    body            VARCHAR,
-    created_at      TIMESTAMP,
     embedding       FLOAT[384],
     embedding_date  DATE
 );
 
-CREATE INDEX IF NOT EXISTS idx_silver_embedding_date
-    ON silver_items_with_embeddings(embedding_date);
+CREATE INDEX IF NOT EXISTS idx_embeddings_date
+    ON embeddings(embedding_date);
 
-CREATE INDEX IF NOT EXISTS idx_silver_source_date
-    ON silver_items_with_embeddings(source, embedding_date);
-
-CREATE TABLE IF NOT EXISTS silver_clusters (
+CREATE TABLE IF NOT EXISTS clusters (
     cluster_date DATE,
     cluster_id   INTEGER,
     cluster_size INTEGER,
     PRIMARY KEY (cluster_date, cluster_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_silver_clusters_date
-    ON silver_clusters(cluster_date);
+CREATE INDEX IF NOT EXISTS idx_clusters_date
+    ON clusters(cluster_date);
 
-CREATE TABLE IF NOT EXISTS silver_cluster_members (
+CREATE TABLE IF NOT EXISTS cluster_members (
     cluster_date DATE,
     cluster_id   INTEGER,
     url_hash     VARCHAR,
@@ -53,9 +44,9 @@ CREATE TABLE IF NOT EXISTS silver_cluster_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cluster_members_date
-    ON silver_cluster_members(cluster_date, cluster_id);
+    ON cluster_members(cluster_date, cluster_id);
 
-CREATE TABLE IF NOT EXISTS gold_issues (
+CREATE TABLE IF NOT EXISTS issue_canonical (
     cluster_date     DATE,
     cluster_id       INTEGER,
     canonical_title  VARCHAR,
@@ -68,10 +59,10 @@ CREATE TABLE IF NOT EXISTS gold_issues (
     PRIMARY KEY (cluster_date, cluster_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_gold_issues_date
-    ON gold_issues(cluster_date);
+CREATE INDEX IF NOT EXISTS idx_issues_date
+    ON issues(cluster_date);
 
-CREATE TABLE IF NOT EXISTS gold_issue_evidence (
+CREATE TABLE IF NOT EXISTS issue_evidence (
     cluster_date DATE,
     cluster_id   INTEGER,
     url_hash     VARCHAR,
@@ -83,8 +74,8 @@ CREATE TABLE IF NOT EXISTS gold_issue_evidence (
     PRIMARY KEY (cluster_date, cluster_id, url_hash)
 );
 
-CREATE INDEX IF NOT EXISTS idx_gold_evidence_issue
-    ON gold_issue_evidence(cluster_date, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_issue_evidence_issue
+    ON issue_evidence(cluster_date, cluster_id);
 
 CREATE TABLE IF NOT EXISTS pocketbase_sync (
     cluster_date DATE,
