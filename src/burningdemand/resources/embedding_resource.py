@@ -7,6 +7,7 @@ from pydantic import Field
 
 class EmbeddingResource(ConfigurableResource):
     model_name: str = Field(default="all-MiniLM-L6-v2")
+    # model_name: str = Field(default="BAAI/bge-small-en-v1.5")
 
     def setup_for_execution(self, context) -> None:
         from sentence_transformers import SentenceTransformer

@@ -14,7 +14,7 @@ dependencies = [
     "aiolimiter",
     "tenacity",
     "scikit-learn",
-    "sumy",
+    "hdbscan",
 ]
 name = "obp-dagster"
 requires-python = ">=3.10,<3.15"

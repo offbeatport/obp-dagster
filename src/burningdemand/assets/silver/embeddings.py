@@ -27,7 +27,7 @@ def embeddings(
         WHERE b.collection_date = ?
           AND NOT EXISTS (
               SELECT 1
-              FROM silver.items s
+              FROM silver.embeddings s
               WHERE s.url_hash = b.url_hash
           )
         """,
@@ -90,7 +90,7 @@ def embeddings(
 
         inserted_attempt = db.upsert_df(
             "silver",
-            "items",
+            "embeddings",
             silver_df,
             ["url_hash", "embedding", "embedding_date", "cluster_date", "cluster_id"],
         )

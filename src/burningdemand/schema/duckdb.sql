@@ -19,35 +19,44 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
 
 
 -- 3. SILVER LAYER
-CREATE TABLE IF NOT EXISTS silver.items (
+CREATE TABLE IF NOT EXISTS silver.embeddings (
     url_hash        VARCHAR PRIMARY KEY,
     embedding       FLOAT[384],
-    embedding_date  DATE,
-    cluster_date    DATE,
-    cluster_id      INTEGER
+    embedding_date  DATE
 );
 
 CREATE TABLE IF NOT EXISTS silver.clusters (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    cluster_size INTEGER,
-    confidence   DOUBLE,
-    summary      VARCHAR,
+    cluster_date   DATE,
+    cluster_id     INTEGER,
+    cluster_size   INTEGER,
+    outlier_ratio  DOUBLE,
+    mean_distance  DOUBLE,
+    authority_score DOUBLE,
     PRIMARY KEY (cluster_date, cluster_id)
+);
+
+CREATE TABLE IF NOT EXISTS silver.cluster_assignments (
+    url_hash       VARCHAR,
+    cluster_date   DATE,
+    cluster_id     INTEGER,
+    PRIMARY KEY (url_hash, cluster_date)
 );
 
 
 -- 4. GOLD LAYER
 CREATE TABLE IF NOT EXISTS gold.issues (
-    cluster_date     DATE,
-    cluster_id       INTEGER,
-    canonical_title  VARCHAR,
-    category         VARCHAR,
-    description      VARCHAR,
-    would_pay_signal BOOLEAN,
-    impact_level     VARCHAR,
-    cluster_size     INTEGER,
-    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    cluster_date        DATE,
+    cluster_id          INTEGER,
+    cluster_fingerprint VARCHAR,
+    canonical_title     VARCHAR,
+    category            VARCHAR,
+    description         VARCHAR,
+    would_pay_signal    BOOLEAN,
+    impact_level        VARCHAR,
+    cluster_size        INTEGER,
+    authority_score     DOUBLE,
+    label_failed        BOOLEAN DEFAULT FALSE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (cluster_date, cluster_id)
 );
 
