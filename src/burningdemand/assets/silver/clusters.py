@@ -11,6 +11,7 @@ from burningdemand.resources.duckdb_resource import DuckDBResource
 @asset(
     partitions_def=daily_partitions,
     deps=[AssetKey(["silver", "embeddings"])],
+    description="Cluster items by similarity using KMeans on embeddings. Groups similar issues together and assigns cluster IDs to items.",
 )
 def clusters(
     context: AssetExecutionContext,
@@ -22,8 +23,9 @@ def clusters(
     data = db.query_df(
         """
         SELECT url_hash, embedding
-        FROM silver.embeddings
+        FROM silver.items
         WHERE embedding_date = ?
+          AND cluster_date IS NULL
         """,
         [date],
     )
@@ -40,7 +42,18 @@ def clusters(
     unique, counts = np.unique(labels, return_counts=True)
     size_by_cluster = dict(zip(unique.tolist(), counts.tolist()))
 
-    # write clusters + membership (bulk for membership)
+    # Update items with cluster assignments
+    for idx, url_hash in enumerate(data["url_hash"]):
+        db.execute(
+            """
+            UPDATE silver.items
+            SET cluster_date = ?, cluster_id = ?
+            WHERE url_hash = ?
+            """,
+            [date, int(labels[idx]), url_hash],
+        )
+
+    # Write cluster metadata
     created_clusters = 0
     for cid in range(n_clusters):
         size = int(size_by_cluster.get(cid, 0))
@@ -48,32 +61,13 @@ def clusters(
             continue
         db.execute(
             """
-            INSERT INTO silver.clusters (cluster_date, cluster_id, cluster_size)
-            VALUES (?, ?, ?)
+            INSERT INTO silver.clusters (cluster_date, cluster_id, cluster_size, summary)
+            VALUES (?, ?, ?, NULL)
             ON CONFLICT DO UPDATE SET cluster_size = EXCLUDED.cluster_size
             """,
             [date, cid, size],
         )
         created_clusters += 1
-
-    members_df = pd.DataFrame(
-        {
-            "cluster_date": date,
-            "cluster_id": [int(c) for c in labels.tolist()],
-            "url_hash": data["url_hash"].tolist(),
-        }
-    )
-
-    # Convert string columns to object dtype for DuckDB compatibility
-    members_df["url_hash"] = members_df["url_hash"].astype("object")
-    members_df["cluster_date"] = members_df["cluster_date"].astype("object")
-
-    db.upsert_df(
-        "silver",
-        "cluster_members",
-        members_df,
-        ["cluster_date", "cluster_id", "url_hash"],
-    )
 
     sizes = list(size_by_cluster.values()) if size_by_cluster else [0]
     sizes_sorted = sorted(sizes)

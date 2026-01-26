@@ -20,6 +20,7 @@ _SOURCE_TYPE_MAP = {
     partitions_def=daily_partitions,
     compute_kind="io",
     deps=[AssetKey(["gold", "issues"])],
+    description="Sync labeled issues to PocketBase for live access. Creates or updates issue records in the external system.",
 )
 async def live_issues(
     context: AssetExecutionContext,

@@ -11,6 +11,7 @@ from burningdemand.resources.embedding_resource import EmbeddingResource
 @asset(
     partitions_def=daily_partitions,
     deps=[AssetKey(["bronze", "raw_items"])],
+    description="Generate vector embeddings for raw items using sentence transformers. Converts title+body text into 384-dimensional vectors for semantic similarity and clustering.",
 )
 def embeddings(
     context: AssetExecutionContext,
@@ -26,7 +27,7 @@ def embeddings(
         WHERE b.collection_date = ?
           AND NOT EXISTS (
               SELECT 1
-              FROM silver.embeddings s
+              FROM silver.items s
               WHERE s.url_hash = b.url_hash
           )
         """,
@@ -68,12 +69,14 @@ def embeddings(
         batch["embedding"] = [e.tolist() for e in embs]
         batch["embedding_date"] = date
 
-        # Only store url_hash, embedding, and embedding_date (other data is in raw_items)
+        # Store url_hash, embedding, embedding_date (cluster info added later in clusters asset)
         silver_df = pd.DataFrame(
             {
                 "url_hash": batch["url_hash"],
                 "embedding": batch["embedding"],
                 "embedding_date": batch["embedding_date"],
+                "cluster_date": None,
+                "cluster_id": None,
             }
         )
 
@@ -82,14 +85,14 @@ def embeddings(
         silver_df["embedding_date"] = silver_df["embedding_date"].astype("object")
 
         context.log.info(
-            f"Batch {batch_num}/{total_batches}: Inserting {len(silver_df)} embeddings into database..."
+            f"Batch {batch_num}/{total_batches}: Inserting {len(silver_df)} items into database..."
         )
 
         inserted_attempt = db.upsert_df(
             "silver",
-            "embeddings",
+            "items",
             silver_df,
-            ["url_hash", "embedding", "embedding_date"],
+            ["url_hash", "embedding", "embedding_date", "cluster_date", "cluster_id"],
         )
         total += int(inserted_attempt)
 

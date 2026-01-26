@@ -119,6 +119,8 @@ class CollectorsResource(ConfigurableResource):
                             "title": title,
                             "body": body[: get_body_max_length()],
                             "created_at": it.get("created_at") or "",
+                            "comment_count": it.get("comments", 0) or 0,
+                            "vote_count": 0,  # GitHub issues don't have votes
                         }
                     )
 
@@ -177,6 +179,8 @@ class CollectorsResource(ConfigurableResource):
                                 if created
                                 else ""
                             ),
+                            "comment_count": it.get("answer_count", 0) or 0,
+                            "vote_count": it.get("score", 0) or 0,
                         }
                     )
 
@@ -250,6 +254,8 @@ class CollectorsResource(ConfigurableResource):
                                 "created_at": datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
+                                "comment_count": d.get("num_comments", 0) or 0,
+                                "vote_count": d.get("score", 0) or 0,
                             }
                         )
 
@@ -303,6 +309,8 @@ class CollectorsResource(ConfigurableResource):
                                 if created_i
                                 else ""
                             ),
+                            "comment_count": it.get("num_comments", 0) or 0,
+                            "vote_count": it.get("points", 0) or 0,
                         }
                     )
 

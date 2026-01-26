@@ -85,6 +85,7 @@ CORE_KEYWORDS = [
 # Source-specific query configuration
 SOURCE_QUERIES: Dict[str, SourceQueryConfig] = {
     "github": SourceQueryConfig(
+        max_queries=5,
         extra_keywords=[
             "feature request",
             "enhancement",

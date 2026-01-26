@@ -12,15 +12,19 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
     title           VARCHAR,
     body            VARCHAR,
     created_at      TIMESTAMP,
+    comment_count   INTEGER,
+    vote_count      INTEGER,
     collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 
 -- 3. SILVER LAYER
-CREATE TABLE IF NOT EXISTS silver.embeddings (
+CREATE TABLE IF NOT EXISTS silver.items (
     url_hash        VARCHAR PRIMARY KEY,
     embedding       FLOAT[384],
-    embedding_date  DATE
+    embedding_date  DATE,
+    cluster_date    DATE,
+    cluster_id      INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS silver.clusters (
@@ -28,19 +32,6 @@ CREATE TABLE IF NOT EXISTS silver.clusters (
     cluster_id   INTEGER,
     cluster_size INTEGER,
     confidence   DOUBLE,
-    PRIMARY KEY (cluster_date, cluster_id)
-);
-
-CREATE TABLE IF NOT EXISTS silver.cluster_members (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    url_hash     VARCHAR,
-    PRIMARY KEY (cluster_date, cluster_id, url_hash)
-);
-
-CREATE TABLE IF NOT EXISTS silver.cluster_summaries (
-    cluster_date DATE,
-    cluster_id   INTEGER,
     summary      VARCHAR,
     PRIMARY KEY (cluster_date, cluster_id)
 );

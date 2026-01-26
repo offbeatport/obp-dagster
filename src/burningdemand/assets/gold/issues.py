@@ -42,12 +42,11 @@ def prepare_clusters(
     # Get titles
     items_df = db.query_df(
         f"""
-        SELECT cm.cluster_id, b.title
-        FROM silver.cluster_members cm
-        JOIN silver.embeddings s ON cm.url_hash = s.url_hash
+        SELECT s.cluster_id, b.title
+        FROM silver.items s
         JOIN bronze.raw_items b ON s.url_hash = b.url_hash
-        WHERE cm.cluster_date = ?
-          AND cm.cluster_id IN ({",".join(["?"] * len(cluster_ids))})
+        WHERE s.cluster_date = ?
+          AND s.cluster_id IN ({",".join(["?"] * len(cluster_ids))})
         """,
         [date, *cluster_ids],
     )
@@ -56,7 +55,7 @@ def prepare_clusters(
     summaries_df = db.query_df(
         f"""
         SELECT cluster_id, summary
-        FROM silver.cluster_summaries
+        FROM silver.clusters
         WHERE cluster_date = ?
           AND cluster_id IN ({",".join(["?"] * len(cluster_ids))})
         """,
@@ -162,24 +161,22 @@ def save_results(db: DuckDBResource, results: List[dict], date: str) -> None:
         db.execute(
             """
             INSERT INTO gold.issue_evidence (cluster_date, cluster_id, url_hash, source, url, title, body, posted_at)
-            SELECT cm.cluster_date,
-                   cm.cluster_id,
+            SELECT s.cluster_date,
+                   s.cluster_id,
                    s.url_hash,
                    b.source,
                    b.url,
                    b.title,
                    b.body,
                    b.created_at
-            FROM silver.cluster_members cm
-            JOIN silver.embeddings s
-              ON s.url_hash = cm.url_hash
+            FROM silver.items s
             JOIN bronze.raw_items b
               ON s.url_hash = b.url_hash
-            WHERE cm.cluster_date = ?
+            WHERE s.cluster_date = ?
               AND EXISTS (
                   SELECT 1 FROM gold.issues gi
-                  WHERE gi.cluster_date = cm.cluster_date
-                    AND gi.cluster_id = cm.cluster_id
+                  WHERE gi.cluster_date = s.cluster_date
+                    AND gi.cluster_id = s.cluster_id
               )
             ON CONFLICT DO NOTHING
             """,
@@ -189,7 +186,11 @@ def save_results(db: DuckDBResource, results: List[dict], date: str) -> None:
     db.transaction(_tx)
 
 
-@asset(partitions_def=daily_partitions, deps=[AssetKey(["silver", "summaries"])])
+@asset(
+    partitions_def=daily_partitions,
+    deps=[AssetKey(["silver", "summaries"])],
+    description="Label clusters using LLM to extract canonical titles, categories, descriptions, and impact levels. Creates structured issue records from clustered items.",
+)
 async def issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
