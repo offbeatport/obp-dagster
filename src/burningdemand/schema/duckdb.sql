@@ -1,89 +1,55 @@
--- burningdemand_dagster/sql/schema.sql
+-- 1. INITIALIZE NAMESPACES (SCHEMAS)
+CREATE SCHEMA IF NOT EXISTS bronze;
+CREATE SCHEMA IF NOT EXISTS silver;
+CREATE SCHEMA IF NOT EXISTS gold;
 
-CREATE TABLE IF NOT EXISTS raw_items (
-    url_hash        VARCHAR PRIMARY KEY,
-    source          VARCHAR,
-    collection_date DATE,
-    url             VARCHAR UNIQUE,
-    title           VARCHAR,
-    body            VARCHAR,
-    created_at      TIMESTAMP,
-    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- 2. BRONZE LAYER: Raw Data (Latest State)
+-- Purpose: Ingested data with minimal transformation.
+-- Space Saving: We use a Primary Key to allow Upserts.
+CREATE TABLE IF NOT EXISTS bronze.items (
+    id VARCHAR PRIMARY KEY,         -- Unique ID from the source
+    content TEXT,                   -- Raw text/body
+    metadata JSON,                  -- Extra fields
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_raw_items_date
-    ON raw_items(collection_date);
-
-CREATE INDEX IF NOT EXISTS idx_raw_items_source_date
-    ON raw_items(source, collection_date);
-
-CREATE TABLE IF NOT EXISTS embeddings (
-    url_hash        VARCHAR PRIMARY KEY,
-    embedding       FLOAT[384],
-    embedding_date  DATE
+-- 3. SILVER LAYER: Enriched & Processed
+-- Purpose: Data cleaned and ready for ML/Analysis.
+CREATE TABLE IF NOT EXISTS silver.embeddings (
+    item_id VARCHAR PRIMARY KEY,    -- Foreign key to bronze.items
+    vector FLOAT[],                 -- The actual embedding array
+    model_name VARCHAR,             -- Model used (e.g., 'text-embedding-3-small')
+    updated_at TIMESTAMP,
+    FOREIGN KEY (item_id) REFERENCES bronze.items (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_embeddings_date
-    ON embeddings(embedding_date);
-
-CREATE TABLE IF NOT EXISTS clusters (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    cluster_size INTEGER,
-    PRIMARY KEY (cluster_date, cluster_id)
+CREATE TABLE IF NOT EXISTS silver.clusters (
+    item_id VARCHAR PRIMARY KEY,
+    cluster_id INTEGER,
+    topic_label VARCHAR,
+    confidence DOUBLE,
+    FOREIGN KEY (item_id) REFERENCES bronze.items (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_clusters_date
-    ON clusters(cluster_date);
-
-CREATE TABLE IF NOT EXISTS cluster_members (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    url_hash     VARCHAR,
-    PRIMARY KEY (cluster_date, cluster_id, url_hash)
+-- 4. GOLD LAYER: Business Insights
+-- Purpose: Final "Burning Demand" issues.
+-- Note: Often created as a TABLE for performance or a VIEW for space-saving.
+CREATE TABLE IF NOT EXISTS gold.issues (
+    issue_id VARCHAR PRIMARY KEY,   -- Aggregated issue ID
+    title VARCHAR,
+    summary TEXT,
+    severity_score FLOAT,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_detected_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_cluster_members_date
-    ON cluster_members(cluster_date, cluster_id);
-
-CREATE TABLE IF NOT EXISTS issue_canonical (
-    cluster_date     DATE,
-    cluster_id       INTEGER,
-    canonical_title  VARCHAR,
-    category         VARCHAR,
-    description      VARCHAR,
-    would_pay_signal BOOLEAN,
-    impact_level     VARCHAR,
-    cluster_size     INTEGER,
-    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (cluster_date, cluster_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_issues_date
-    ON issues(cluster_date);
-
-CREATE TABLE IF NOT EXISTS issue_evidence (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    url_hash     VARCHAR,
-    source       VARCHAR,
-    url          VARCHAR,
-    title        VARCHAR,
-    body         VARCHAR,
-    posted_at    TIMESTAMP,
-    PRIMARY KEY (cluster_date, cluster_id, url_hash)
-);
-
-CREATE INDEX IF NOT EXISTS idx_issue_evidence_issue
-    ON issue_evidence(cluster_date, cluster_id);
-
-CREATE TABLE IF NOT EXISTS pocketbase_sync (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    issue_id     VARCHAR,
-    synced_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (cluster_date, cluster_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_pb_sync_date
-    ON pocketbase_sync(cluster_date);
+-- Example of a Space-Saving Gold View
+CREATE VIEW IF NOT EXISTS gold.view_active_issue_details AS
+SELECT 
+    i.id, 
+    i.content, 
+    c.topic_label, 
+    c.confidence
+FROM bronze.items i
+JOIN silver.clusters c ON i.id = c.item_id
+WHERE c.confidence > 0.8;

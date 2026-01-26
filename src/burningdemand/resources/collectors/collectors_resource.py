@@ -8,6 +8,7 @@ from dagster import ConfigurableResource, EnvVar
 
 from .collector_queries import (
     get_body_max_length,
+    get_max_queries,
     get_query_keywords,
     get_query_subreddits,
     get_query_tags,
@@ -94,6 +95,11 @@ class CollectorsResource(ConfigurableResource):
             chunk = keywords[i : i + 6]
             keyword_query = " OR ".join([f'"{kw}"' for kw in chunk])
             queries.append(f"is:issue created:{date} ({keyword_query})")
+        
+        # Apply max_queries limit if configured
+        max_queries = get_max_queries("github")
+        if max_queries is not None:
+            queries = queries[:max_queries]
 
         # Build all request specs
         specs = [

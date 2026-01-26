@@ -3,7 +3,7 @@ dependencies = [
     "dagster==1.12.11",
     "dagster-webserver",
     "requests",
-    "anthropic",
+    "litellm",
     "pandas",
     "numpy",
     "duckdb",

@@ -1,11 +1,6 @@
-# burningdemand_dagster/resources/duckdb_resource.py
-import threading
-from pathlib import Path
-from uuid import uuid4
-from typing import Callable, Optional
-
 import duckdb
 import pandas as pd
+from pathlib import Path
 from dagster import ConfigurableResource
 from pydantic import Field
 
@@ -14,80 +9,63 @@ class DuckDBResource(ConfigurableResource):
     db_path: str = Field(default="./data/burningdemand.duckdb")
     schema_path: str = Field(default="src/burningdemand/schema/duckdb.sql")
 
-    def setup_for_execution(self, context) -> None:
+    def _get_conn(self):
+        """Internal helper to ensure path exists and get connection."""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
-        self._conn = duckdb.connect(self.db_path)
-        self._conn.execute("PRAGMA threads=4;")
-        self._create_schema()
+        return duckdb.connect(self.db_path)
 
-    def teardown_after_execution(self, context) -> None:
-        with self._lock:
-            try:
-                self._conn.close()
-            except Exception:
-                pass
+    def setup_for_execution(self, context) -> None:
+        """
+        Initializes the database by creating schemas and running the SQL script.
+        """
+        with self._get_conn() as conn:
+            # 1. Ensure schemas exist first
+            for schema in ["bronze", "silver", "gold"]:
+                conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
 
-    def _create_schema(self) -> None:
-        schema_file = Path(self.schema_path)
-        if not schema_file.exists():
-            raise FileNotFoundError(f"Schema file not found: {schema_file.resolve()}")
+            # 2. Run the main schema SQL
+            schema_file = Path(self.schema_path)
+            if not schema_file.exists():
+                raise FileNotFoundError(f"Schema file missing: {schema_file}")
 
-        sql = schema_file.read_text(encoding="utf-8")
-        with self._lock:
-            self._conn.execute(sql)
+            # Use execute on the full text of the SQL file
+            conn.execute(schema_file.read_text())
 
-    def query_df(self, sql: str, params=None):
-        with self._lock:
-            return self._conn.execute(sql, params or []).fetchdf()
+    def query_df(self, sql: str, params=None) -> pd.DataFrame:
+        with self._get_conn() as conn:
+            return conn.execute(sql, params or []).df()
 
     def execute(self, sql: str, params=None) -> None:
-        with self._lock:
-            self._conn.execute(sql, params or [])
+        with self._get_conn() as conn:
+            conn.execute(sql, params or [])
 
-    def transaction(self, fn: Callable[[], None]) -> None:
+    def upsert_df(
+        self, schema: str, table: str, df: pd.DataFrame, columns: list[str]
+    ) -> int:
         """
-        Run a set of operations in a single transaction under the resource lock.
-        """
-        with self._lock:
-            self._conn.execute("BEGIN;")
-            try:
-                fn()
-                self._conn.execute("COMMIT;")
-            except Exception:
-                self._conn.execute("ROLLBACK;")
-                raise
-
-    def insert_df(self, table: str, df: pd.DataFrame, columns: list[str]) -> int:
-        """
-        Bulk insert using DuckDB view registration + INSERT..SELECT, with ON CONFLICT DO NOTHING.
-        This avoids Python row loops and is typically the fastest MVP-friendly approach.
+        Uses DuckDB's native 'INSERT OR REPLACE' into a specific schema.table.
+        Assumes the table has a PRIMARY KEY defined in your schema.sql.
         """
         if df is None or df.empty:
             return 0
 
-        view = f"v_{uuid4().hex}"
-        cols = ", ".join(columns)
+        # Construct full table path (e.g., bronze.items)
+        full_table_path = f"{schema}.{table}"
 
-        with self._lock:
-            # Register a view backed by the DataFrame
-            self._conn.register(view, df[columns])
+        # Filter DF to requested columns and prepare SQL string
+        upsert_data = df[columns]
+        cols_str = ", ".join(columns)
 
-            # Insert from the view
-            self._conn.execute(
-                f"""
-                INSERT INTO {table} ({cols})
-                SELECT {cols} FROM {view}
-                ON CONFLICT DO NOTHING
-                """
-            )
+        with self._get_conn() as conn:
+            # Register the dataframe as a temporary view
+            conn.register("tmp_df_view", upsert_data)
 
-            # Unregister view to prevent name collisions / memory retention
-            try:
-                self._conn.unregister(view)
-            except Exception:
-                # Some duckdb builds may not expose unregister; safe to ignore.
-                pass
+            # Native UPSERT: Replaces rows with matching Primary Keys
+            # Specifying (columns) ensures we don't hit "count mismatch" errors
+            query = f"""
+                INSERT OR REPLACE INTO {full_table_path} ({cols_str}) 
+                SELECT {cols_str} FROM tmp_df_view
+            """
+            conn.execute(query)
 
-        # Accurate insert count with ON CONFLICT is non-trivial; return attempted rows.
-        return int(len(df))
+        return len(df)

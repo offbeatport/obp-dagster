@@ -1,13 +1,13 @@
 import pandas as pd
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
-from ..partitions import source_day_partitions
-from ..resources.collectors.collectors_resource import CollectorsResource
-from ..resources.duckdb_resource import DuckDBResource
-from ..utils.url import normalize_url, url_hash
+from burningdemand.partitions import source_day_partitions
+from burningdemand.resources.collectors.collectors_resource import CollectorsResource
+from burningdemand.resources.duckdb_resource import DuckDBResource
+from burningdemand.utils.url import normalize_url, url_hash
 
 
-@asset(partitions_def=source_day_partitions, group_name="bronze")
+@asset(partitions_def=source_day_partitions, group_name="bronze", name="raw_items")
 async def raw_items(
     context: AssetExecutionContext,
     db: DuckDBResource,
@@ -37,15 +37,15 @@ async def raw_items(
 
     # enforce expected cols & sizes - convert to object dtype for DuckDB compatibility
     df["title"] = df["title"].fillna("").astype("object")
-    df["body"] = df["body"].fillna("").astype("object").str.slice(0, 500)
+    df["body"] = df["body"].fillna("").astype("object")
     df["url"] = df["url"].astype("object")
     df["url_hash"] = df["url_hash"].astype("object")
     df["source"] = df["source"].astype("object")
     df["collection_date"] = df["collection_date"].astype("object")
     df["created_at"] = df["created_at"].fillna("").astype("object")
 
-    inserted_attempt = db.insert_df(
-        "raw",
+    inserted_attempt = db.upsert_df(
+        "raw_items",
         df,
         ["url_hash", "source", "collection_date", "url", "title", "body", "created_at"],
     )

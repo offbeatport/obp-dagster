@@ -3,9 +3,9 @@ import pandas as pd
 import numpy as np
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
-from ..partitions import daily_partitions
-from ..resources.duckdb_resource import DuckDBResource
-from ..assets.embeddings import embeddings
+from burningdemand.partitions import daily_partitions
+from burningdemand.resources.duckdb_resource import DuckDBResource
+from burningdemand.assets.silver.embeddings import embeddings
 
 
 @asset(
@@ -24,7 +24,7 @@ def clusters(
     data = db.query_df(
         """
         SELECT url_hash, embedding
-        FROM embeddings
+        FROM silver.embeddings
         WHERE embedding_date = ?
         """,
         [date],
@@ -50,7 +50,7 @@ def clusters(
             continue
         db.execute(
             """
-            INSERT INTO clusters (cluster_date, cluster_id, cluster_size)
+            INSERT INTO silver.clusters (cluster_date, cluster_id, cluster_size)
             VALUES (?, ?, ?)
             ON CONFLICT DO UPDATE SET cluster_size = EXCLUDED.cluster_size
             """,
@@ -66,8 +66,15 @@ def clusters(
         }
     )
 
-    db.insert_df(
-        "cluster_members", members_df, ["cluster_date", "cluster_id", "url_hash"]
+    # Convert string columns to object dtype for DuckDB compatibility
+    members_df["url_hash"] = members_df["url_hash"].astype("object")
+    members_df["cluster_date"] = members_df["cluster_date"].astype("object")
+
+    db.upsert_df(
+        "silver",
+        "cluster_members",
+        members_df,
+        ["cluster_date", "cluster_id", "url_hash"],
     )
 
     sizes = list(size_by_cluster.values()) if size_by_cluster else [0]

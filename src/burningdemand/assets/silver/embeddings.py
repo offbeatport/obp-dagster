@@ -3,16 +3,16 @@ import pandas as pd
 import numpy as np
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
-from ..partitions import daily_partitions
-from ..resources.duckdb_resource import DuckDBResource
-from ..resources.embedding_resource import EmbeddingResource
-from ..assets.raw_items import raw_items
+from burningdemand.partitions import daily_partitions
+from burningdemand.resources.duckdb_resource import DuckDBResource
+from burningdemand.resources.embedding_resource import EmbeddingResource
+from burningdemand.assets.bronze.raw_items import raw_items
 
 
 @asset(
     partitions_def=daily_partitions,
     group_name="silver",
-    deps=[raw_items],
+    deps=["raw_items"],
 )
 def embeddings(
     context: AssetExecutionContext,
@@ -24,11 +24,11 @@ def embeddings(
     items = db.query_df(
         """
         SELECT b.url_hash, b.title, b.body
-        FROM raw_items b
+        FROM bronze.raw_items b
         WHERE b.collection_date = ?
           AND NOT EXISTS (
               SELECT 1
-              FROM embeddings s
+              FROM silver.embeddings s
               WHERE s.url_hash = b.url_hash
           )
         """,
@@ -39,7 +39,7 @@ def embeddings(
         context.log.info(f"No new items to process for {date}")
         return MaterializeResult(metadata={"enriched": 0})
 
-    enriched = 0
+    total = 0
     batch_size = 1000
     total_batches = (len(items) + batch_size - 1) // batch_size
 
@@ -87,17 +87,18 @@ def embeddings(
             f"Batch {batch_num}/{total_batches}: Inserting {len(silver_df)} embeddings into database..."
         )
 
-        inserted_attempt = db.insert_df(
+        inserted_attempt = db.upsert_df(
+            "silver",
             "embeddings",
             silver_df,
             ["url_hash", "embedding", "embedding_date"],
         )
-        enriched += int(inserted_attempt)
+        total += int(inserted_attempt)
 
         context.log.info(
-            f"Batch {batch_num}/{total_batches}: Completed ({inserted_attempt} inserted, {enriched} total enriched)"
+            f"Batch {batch_num}/{total_batches}: Completed ({inserted_attempt} upserted, {total} total embeddings)"
         )
 
     return MaterializeResult(
-        metadata={"enriched": int(enriched), "batch_size": int(batch_size)}
+        metadata={"embeddings": int(total), "batch_size": int(batch_size)}
     )

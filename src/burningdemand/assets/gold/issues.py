@@ -1,32 +1,41 @@
 # burningdemand_dagster/assets/issues.py
 import asyncio
+import os
 import pandas as pd
-import anthropic
+from litellm import acompletion
+
 from dagster import AssetExecutionContext, MaterializeResult, MetadataValue, asset
 
 from burningdemand.partitions import daily_partitions
-from burningdemand.resources.anthropic_resource import AnthropicResource
+from burningdemand.resources.llm_resource import LLMResource
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
-from burningdemand.assets.clusters import clusters
 
 
 @asset(partitions_def=daily_partitions, group_name="gold", deps=["clusters"])
 async def issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    anthropic_api: AnthropicResource,
+    llm: LLMResource,
 ) -> MaterializeResult:
+
     date = context.partition_key
-    client = anthropic.AsyncAnthropic(api_key=anthropic_api.api_key)
+
+    # Set API keys in environment for LiteLLM
+    if llm.groq_api_key:
+        os.environ["GROQ_API_KEY"] = llm.groq_api_key
+    if llm.anthropic_api_key:
+        os.environ["ANTHROPIC_API_KEY"] = llm.anthropic_api_key
+    if llm.openai_api_key:
+        os.environ["OPENAI_API_KEY"] = llm.openai_api_key
 
     unlabeled = db.query_df(
         """
         SELECT sc.cluster_id, sc.cluster_size
-        FROM clusters sc
+        FROM silver.clusters sc
         WHERE sc.cluster_date = ?
           AND NOT EXISTS (
-              SELECT 1 FROM issues gi
+              SELECT 1 FROM gold.issues gi
               WHERE gi.cluster_date = sc.cluster_date
                 AND gi.cluster_id = sc.cluster_id
           )
@@ -42,9 +51,9 @@ async def issues(
     titles_df = db.query_df(
         f"""
         SELECT cm.cluster_id, b.title
-        FROM cluster_members cm
-        JOIN embeddings s ON cm.url_hash = s.url_hash
-        JOIN raw_items b ON s.url_hash = b.url_hash
+        FROM silver.cluster_members cm
+        JOIN silver.embeddings s ON cm.url_hash = s.url_hash
+        JOIN bronze.raw_items b ON s.url_hash = b.url_hash
         WHERE cm.cluster_date = ?
           AND cm.cluster_id IN ({",".join(["?"] * len(cluster_ids))})
         """,
@@ -76,35 +85,37 @@ async def issues(
 
 Return ONLY valid JSON:
 {{
-  "canonical_title": "Generic problem (max 80 chars)",
+  "canonical_title": "Generic problem (max 120 chars)",
   "category": "ai|finance|compliance|logistics|healthtech|devtools|ecommerce|other",
   "description": "Root problem in 1-2 sentences",
-  "would_pay_signal": true/false,
+  "would_pay_": number of would_pay signals,
   "impact_level": "low|medium|high"
 }}"""
 
             try:
-                msg = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=500,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                raw = msg.content[0].text
-                data = extract_first_json_obj(raw)
-                label = IssueLabel.model_validate(data)
+                print(prompt)
+                # exit()
+                # response = await acompletion(
+                #     model=llm.model,
+                #     messages=[{"role": "user", "content": prompt}],
+                #     max_tokens=500,
+                # )
+                # raw = response.choices[0].message.content
+                # data = extract_first_json_obj(raw)
+                # label = IssueLabel.model_validate(data)
 
-                results.append(
-                    {
-                        "cluster_date": date,
-                        "cluster_id": int(cid),
-                        "canonical_title": label.canonical_title,
-                        "category": label.category,
-                        "description": label.description,
-                        "would_pay_signal": bool(label.would_pay_signal),
-                        "impact_level": label.impact_level,
-                        "cluster_size": int(size),
-                    }
-                )
+                # results.append(
+                #     {
+                #         "cluster_date": date,
+                #         "cluster_id": int(cid),
+                #         "canonical_title": label.canonical_title,
+                #         "category": label.category,
+                #         "description": label.description,
+                #         "would_pay_signal": bool(label.would_pay_signal),
+                #         "impact_level": label.impact_level,
+                #         "cluster_size": int(size),
+                #     }
+                # )
             except Exception as e:
                 errors.append(f"cluster_id={cid}: {type(e).__name__}: {e}")
 
@@ -119,7 +130,8 @@ Return ONLY valid JSON:
         df = pd.DataFrame(results)
 
         def _tx():
-            db.insert_df(
+            db.upsert_df(
+                "gold",
                 "issues",
                 df,
                 [
@@ -137,7 +149,7 @@ Return ONLY valid JSON:
             # Evidence denorm in SQL (fast)
             db.execute(
                 """
-                INSERT INTO issue_evidence (cluster_date, cluster_id, url_hash, source, url, title, body, posted_at)
+                INSERT INTO gold.issue_evidence (cluster_date, cluster_id, url_hash, source, url, title, body, posted_at)
                 SELECT cm.cluster_date,
                        cm.cluster_id,
                        s.url_hash,
@@ -146,14 +158,14 @@ Return ONLY valid JSON:
                        b.title,
                        b.body,
                        b.created_at
-                FROM cluster_members cm
-                JOIN embeddings s
+                FROM silver.cluster_members cm
+                JOIN silver.embeddings s
                   ON s.url_hash = cm.url_hash
-                JOIN raw_items b
+                JOIN bronze.raw_items b
                   ON s.url_hash = b.url_hash
                 WHERE cm.cluster_date = ?
                   AND EXISTS (
-                      SELECT 1 FROM issues gi
+                      SELECT 1 FROM gold.issues gi
                       WHERE gi.cluster_date = cm.cluster_date
                         AND gi.cluster_id = cm.cluster_id
                   )

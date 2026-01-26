@@ -1,7 +1,7 @@
 """Query configuration for collectors: keywords, tags, subreddits, and body size limits."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -11,6 +11,7 @@ class SourceQueryConfig:
     extra_keywords: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     subreddits: List[str] = field(default_factory=list)
+    max_queries: Optional[int] = None  # Limit number of queries to execute
 
 
 # Core keywords shared across all sources
@@ -84,6 +85,7 @@ CORE_KEYWORDS = [
 # Source-specific query configuration
 SOURCE_QUERIES: Dict[str, SourceQueryConfig] = {
     "github": SourceQueryConfig(
+        max_queries=2,
         extra_keywords=[
             "feature request",
             "enhancement",
@@ -92,7 +94,7 @@ SOURCE_QUERIES: Dict[str, SourceQueryConfig] = {
             "timeout",
             "memory leak",
             "integration",
-        ]
+        ],
     ),
     "stackoverflow": SourceQueryConfig(
         tags=[
@@ -135,7 +137,9 @@ SOURCE_QUERIES: Dict[str, SourceQueryConfig] = {
 
 def get_query_keywords(source: str) -> List[str]:
     """Get all keywords for a source (core + source-specific)."""
-    return CORE_KEYWORDS + SOURCE_QUERIES.get(source, SourceQueryConfig()).extra_keywords
+    return (
+        CORE_KEYWORDS + SOURCE_QUERIES.get(source, SourceQueryConfig()).extra_keywords
+    )
 
 
 def get_query_tags(source: str) -> List[str]:
@@ -160,3 +164,8 @@ def matches_query_keywords(text: str, source: str) -> bool:
 def get_body_max_length() -> int:
     """Get maximum body length for collected items."""
     return 10 * 1000  # 10KB
+
+
+def get_max_queries(source: str) -> Optional[int]:
+    """Get maximum number of queries to execute for a source."""
+    return SOURCE_QUERIES.get(source, SourceQueryConfig()).max_queries

@@ -6,7 +6,7 @@ from dagster import AssetExecutionContext, MaterializeResult, MetadataValue, ass
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.pocketbase_resource import PocketBaseResource
-from burningdemand.assets.issues import issues
+from burningdemand.assets.gold.issues import issues
 
 _SOURCE_TYPE_MAP = {
     "github": "github_issue",
@@ -32,7 +32,7 @@ async def live_issues(
     issues = db.query_df(
         """
         SELECT g.*
-        FROM gold_issues g
+        FROM gold.issues g
         WHERE g.cluster_date = ?
           AND NOT EXISTS (
               SELECT 1 FROM pocketbase_sync ps
@@ -118,7 +118,7 @@ async def live_issues(
         evidence = db.query_df(
             """
             SELECT source, url, body, posted_at
-            FROM gold_issue_evidence
+            FROM gold.issue_evidence
             WHERE cluster_date = ? AND cluster_id = ?
             """,
             [date, cluster_id],
@@ -166,7 +166,7 @@ async def live_issues(
 
         # Track sync
         db.execute(
-            "INSERT INTO pocketbase_sync (cluster_date, cluster_id, issue_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+            "INSERT INTO gold.live_issues (cluster_date, cluster_id, issue_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
             [date, cluster_id, issue_id],
         )
         synced += 1
