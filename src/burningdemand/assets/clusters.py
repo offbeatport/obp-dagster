@@ -1,7 +1,7 @@
 # burningdemand_dagster/assets/clusters.py
 import pandas as pd
 import numpy as np
-from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
+from dagster import AssetExecutionContext, MaterializeResult, asset
 import hdbscan
 
 from burningdemand.partitions import daily_partitions
@@ -10,7 +10,8 @@ from burningdemand.resources.duckdb_resource import DuckDBResource
 
 @asset(
     partitions_def=daily_partitions,
-    deps=[AssetKey(["silver", "embeddings"])],
+    group_name="silver",
+    deps=["embeddings"],
     description="Cluster items by similarity using HDBSCAN on stored embeddings. Uses rolling window (last 7 days) to allow clusters to grow day-over-day and detect heat signals. Groups similar issues together, allows noise/unclustered items, and stores quality metrics (outlier_ratio, mean_distance, authority_score). Authority score = sum of votes + 0.5 * comments to distinguish high-engagement signals from noise.",
 )
 def clusters(

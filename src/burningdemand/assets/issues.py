@@ -92,7 +92,7 @@ def prepare_clusters(
     import numpy as np
     import pandas as pd
     from burningdemand.utils.cluster_representatives import get_cluster_representatives
-    
+
     titles_by_cluster = {}
     snippets_by_cluster = {}
 
@@ -121,18 +121,24 @@ def prepare_clusters(
             continue
 
         # Get embeddings from stored data
-        embeddings_array = np.array(cluster_data["embedding"].tolist(), dtype=np.float32)
-        
+        embeddings_array = np.array(
+            cluster_data["embedding"].tolist(), dtype=np.float32
+        )
+
         # Prepare items DataFrame for representatives
-        cluster_items = pd.DataFrame({
-            "title": cluster_data["title"],
-            "body": cluster_data["body"],
-            "source": cluster_data["source"],
-        })
-        
+        cluster_items = pd.DataFrame(
+            {
+                "title": cluster_data["title"],
+                "body": cluster_data["body"],
+                "source": cluster_data["source"],
+            }
+        )
+
         # Get representatives (will clean body internally)
-        titles, snippets = get_cluster_representatives(cluster_items, embeddings_array, k=5)
-        
+        titles, snippets = get_cluster_representatives(
+            cluster_items, embeddings_array, k=5
+        )
+
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
 
@@ -219,7 +225,7 @@ Return ONLY valid JSON matching this exact schema:
                     )
                     raw = response.choices[0].message.content
                     data = extract_first_json_obj(raw)
-                    
+
                     # Validate with Pydantic
                     label = IssueLabel.model_validate(data)
                     label_data = {
@@ -279,19 +285,19 @@ def save_results(
             "gold",
             "issues",
             df,
-                [
-                    "cluster_date",
-                    "cluster_id",
-                    "cluster_fingerprint",
-                    "canonical_title",
-                    "category",
-                    "description",
-                    "would_pay_signal",
-                    "impact_level",
-                    "cluster_size",
-                    "authority_score",
-                    "label_failed",
-                ],
+            [
+                "cluster_date",
+                "cluster_id",
+                "cluster_fingerprint",
+                "canonical_title",
+                "category",
+                "description",
+                "would_pay_signal",
+                "impact_level",
+                "cluster_size",
+                "authority_score",
+                "label_failed",
+            ],
         )
 
     if failed:
@@ -332,13 +338,14 @@ def save_results(
           )
         ON CONFLICT DO NOTHING
         """,
-        [date],
-    )
+            [date],
+        )
 
 
 @asset(
     partitions_def=daily_partitions,
-    deps=[AssetKey(["silver", "clusters"])],
+    group_name="gold",
+    deps=["clusters"],
     description="Label clusters using LLM to extract canonical titles, categories, descriptions, and impact levels. Processes clusters ranked by authority_score (highest first) to prioritize high-engagement signals. Computes representatives on-the-fly, reuses labels via fingerprint, and includes LLM hardening with retry/validation.",
 )
 async def issues(
@@ -355,7 +362,9 @@ async def issues(
         return MaterializeResult(metadata={"labeled": 0})
 
     cluster_ids = unlabeled["cluster_id"].astype(int).tolist()
-    titles_by_cluster, snippets_by_cluster, _ = prepare_clusters(db, date, cluster_ids, embedding)
+    titles_by_cluster, snippets_by_cluster, _ = prepare_clusters(
+        db, date, cluster_ids, embedding
+    )
 
     # Compute fingerprints for all clusters
     fingerprints_by_cluster = {}

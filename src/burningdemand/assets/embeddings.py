@@ -1,7 +1,7 @@
 # burningdemand_dagster/assets/embeddings.py
 import pandas as pd
 import numpy as np
-from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
+from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -10,7 +10,8 @@ from burningdemand.resources.embedding_resource import EmbeddingResource
 
 @asset(
     partitions_def=daily_partitions,
-    deps=[AssetKey(["bronze", "raw_items"])],
+    group_name="silver",
+    deps=["raw_items"],
     description="Generate vector embeddings for raw items using sentence transformers. Converts title+body text into 384-dimensional vectors for semantic similarity and clustering.",
 )
 def embeddings(
@@ -69,14 +70,11 @@ def embeddings(
         batch["embedding"] = [e.tolist() for e in embs]
         batch["embedding_date"] = date
 
-        # Store url_hash, embedding, embedding_date (cluster info added later in clusters asset)
         silver_df = pd.DataFrame(
             {
                 "url_hash": batch["url_hash"],
                 "embedding": batch["embedding"],
                 "embedding_date": batch["embedding_date"],
-                "cluster_date": None,
-                "cluster_id": None,
             }
         )
 
@@ -92,7 +90,7 @@ def embeddings(
             "silver",
             "embeddings",
             silver_df,
-            ["url_hash", "embedding", "embedding_date", "cluster_date", "cluster_id"],
+            ["url_hash", "embedding", "embedding_date"],
         )
         total += int(inserted_attempt)
 

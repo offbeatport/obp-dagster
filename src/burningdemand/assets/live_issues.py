@@ -1,12 +1,11 @@
-# burningdemand_dagster/assets/gold.py
+# burningdemand_dagster/assets/live_issues.py
 import asyncio
 import pandas as pd
-from dagster import AssetExecutionContext, MaterializeResult, AssetKey, asset
+from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.pocketbase_resource import PocketBaseResource
-from burningdemand.assets.gold.issues import issues
 
 _SOURCE_TYPE_MAP = {
     "github": "github_issue",
@@ -18,8 +17,8 @@ _SOURCE_TYPE_MAP = {
 
 @asset(
     partitions_def=daily_partitions,
-    compute_kind="io",
-    deps=[AssetKey(["gold", "issues"])],
+    group_name="gold",
+    deps=["issues"],
     description="Sync labeled issues to PocketBase for live access. Creates or updates issue records in the external system.",
 )
 async def live_issues(

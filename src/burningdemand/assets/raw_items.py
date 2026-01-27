@@ -9,6 +9,7 @@ from burningdemand.utils.url import normalize_url, url_hash
 
 @asset(
     partitions_def=source_day_partitions,
+    group_name="bronze",
     description="Collect raw issues from external sources (GitHub, StackOverflow, Reddit, HackerNews). Stores title, body, URL, and metadata for each collected item.",
 )
 async def raw_items(
@@ -46,7 +47,7 @@ async def raw_items(
     df["source"] = df["source"].astype("object")
     df["collection_date"] = df["collection_date"].astype("object")
     df["created_at"] = df["created_at"].fillna("").astype("object")
-    
+
     # Handle comment_count and vote_count (default to 0 if not present)
     if "comment_count" not in df.columns:
         df["comment_count"] = 0
@@ -59,7 +60,17 @@ async def raw_items(
         "bronze",
         "raw_items",
         df,
-        ["url_hash", "source", "collection_date", "url", "title", "body", "created_at", "comment_count", "vote_count"],
+        [
+            "url_hash",
+            "source",
+            "collection_date",
+            "url",
+            "title",
+            "body",
+            "created_at",
+            "comment_count",
+            "vote_count",
+        ],
     )
 
     return MaterializeResult(

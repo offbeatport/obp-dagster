@@ -1,15 +1,15 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from dagster import Definitions, load_assets_from_package_module
+from dagster import Definitions
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path, override=True)
 
-# Import the sub-packages
-from .assets import bronze, silver, gold
+# Import assets directly
+from .assets import raw_items, embeddings, clusters, issues, live_issues
 
 from .resources.llm_resource import LLMResource
 from .resources.collectors.collectors_resource import CollectorsResource
@@ -17,21 +17,16 @@ from .resources.duckdb_resource import DuckDBResource
 from .resources.embedding_resource import EmbeddingResource
 from .resources.pocketbase_resource import PocketBaseResource
 
-# Load assets by layer
-# This automatically groups them in the UI and allows for
-# clean names like 'items' inside the folders.
-bronze_assets = load_assets_from_package_module(
-    bronze, group_name="bronze", key_prefix="bronze"
-)
-silver_assets = load_assets_from_package_module(
-    silver, group_name="silver", key_prefix="silver"
-)
-gold_assets = load_assets_from_package_module(
-    gold, group_name="gold", key_prefix="gold"
-)
-
 # Combine all assets
-all_assets = [*bronze_assets, *silver_assets, *gold_assets]
+# Assets use AssetKey with prefixes (bronze, silver, gold) in their dependencies
+# Dagster will automatically handle the key prefixes based on the AssetKey references
+all_assets = [
+    raw_items,
+    embeddings,
+    clusters,
+    issues,
+    live_issues,
+]
 
 llm_model = os.getenv("LLM_MODEL", "groq/llama-3.1-70b-versatile")
 
