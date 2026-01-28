@@ -15,7 +15,8 @@ services:
       - PB_EMAIL=${PB_EMAIL}
       - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
+      - STACKEXCHANGE_KEY=${STACKEXCANGE_KEY}
+      - REDIS_URL=redis://dagster-redis:6379/0
     volumes:
       - dagster_home:/opt/dagster/dagster_home
       # Shared DuckDB data directory (./data inside the container)
@@ -48,6 +49,7 @@ services:
       - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
+      - REDIS_URL=redis://dagster-redis:6379/0
     volumes:
       - dagster_home:/opt/dagster/dagster_home
       # Shared DuckDB data directory (./data inside the container)

@@ -4,6 +4,7 @@ from dagster import AssetExecutionContext, MaterializeResult, asset
 from burningdemand.partitions import source_day_partitions
 from burningdemand.resources.collectors.collectors_resource import CollectorsResource
 from burningdemand.resources.duckdb_resource import DuckDBResource
+from burningdemand.resources.redis_resource import RedisResource
 from burningdemand.utils.url import normalize_url, url_hash
 
 

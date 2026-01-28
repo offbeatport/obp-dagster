@@ -64,7 +64,7 @@ async def batch_requests(
         domain = urlparse(req.get("url", "")).netloc or ""
         requests_by_domain[domain].append((idx, req))
 
-    # Access Redis-based rate limiter once (Definitions should provide it)
+    # Access Redis-based rate limiter once
     redis = getattr(context.resources, "redis", None)
 
     # Process all domains concurrently
@@ -75,6 +75,14 @@ async def batch_requests(
         rate_limit_config = RATE_LIMITS.get(domain)
 
         if rate_limit_config:
+            if redis is None:
+                # Fail fast with a clear error instead of crashing on None
+                raise RuntimeError(
+                    "RedisResource 'redis' is required for rate limiting "
+                    f"but is not configured (domain={domain}). "
+                    "Add it to `Definitions.resources` as 'redis'."
+                )
+
             rate_limit, time_period = rate_limit_config
 
             async def run_with_limit(idx: int, req: dict) -> tuple[int, httpx.Response]:
