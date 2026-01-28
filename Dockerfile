@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     procps \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/dagster/app
