@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections import defaultdict
 from urllib.parse import urlparse
 
@@ -14,6 +15,11 @@ RATE_LIMITS: dict[str, tuple[int, float]] = {
     "api.reddit.com": (60, 60.0),
     "hn.algolia.com": (100, 60.0),
 }
+
+# Per-domain monotonic timestamp when the next batch is allowed to start.
+# This makes rate limiting *global* across multiple calls to batch_requests
+# within the same process, so successive calls don't overlap time windows.
+_NEXT_AVAILABLE_TIME: dict[str, float] = {}
 
 
 def create_async_client(
@@ -35,7 +41,6 @@ async def request_async(
     **kwargs,
 ) -> httpx.Response:
     """Make an async HTTP request (rate limiting handled at batch level)."""
-    domain = urlparse(url).netloc or ""
 
     resp = await client.request(method, url, **kwargs)
     resp.raise_for_status()
@@ -49,8 +54,13 @@ async def batch_requests(
 ) -> list[httpx.Response]:
     """Execute requests in strict batches to enforce rate limits.
 
-    For domains with rate limits, ensures no more than rate_limit requests
-    per time_period by batching: send rate_limit requests, wait time_period, repeat.
+    For domains with rate limits, ensures no more than ``rate_limit`` requests
+    per ``time_period`` by batching: send ``rate_limit`` requests, then enforce
+    at least ``time_period`` seconds between successive batches *globally*.
+
+    The global spacing is enforced across multiple invocations of
+    :func:`batch_requests` in this process, so a second call cannot start a new
+    batch for the same domain until the previous window has fully elapsed.
     """
     if not requests:
         return []
@@ -73,14 +83,28 @@ async def batch_requests(
 
         if rate_limit_config:
             rate_limit, time_period = rate_limit_config
-            # Strict batching: send rate_limit requests, wait time_period, repeat
+            # Strict batching: send rate_limit requests, with *global* spacing
+            # between batches using a per-domain monotonic next-available time.
             total = len(domain_requests)
             batch_num = 0
+
+            # Get the earliest time we are allowed to start a batch for this domain
+            next_available = _NEXT_AVAILABLE_TIME.get(domain, 0.0)
 
             for batch_start in range(0, total, rate_limit):
                 batch_end = min(batch_start + rate_limit, total)
                 batch = domain_requests[batch_start:batch_end]
                 batch_num += 1
+
+                # Enforce global spacing between batches across calls
+                now = time.monotonic()
+                if now < next_available:
+                    wait_for = next_available - now
+                    context.log.info(
+                        f"{domain}: Waiting {wait_for:.2f}s before next batch "
+                        f"to respect global rate limit window..."
+                    )
+                    await asyncio.sleep(wait_for)
 
                 context.log.info(
                     f"{domain}: Batch {batch_num} of {len(batch)} requests "
@@ -95,12 +119,12 @@ async def batch_requests(
                 for (idx, _), result in zip(batch, batch_results):
                     all_results[idx] = result
 
-                # Wait time_period seconds before next batch (unless last batch)
-                if batch_end < total:
-                    context.log.info(
-                        f"{domain}: Waiting {time_period}s before next batch..."
-                    )
-                    await asyncio.sleep(time_period)
+                # After this batch completes, set the next allowed time for this domain
+                next_available = time.monotonic() + time_period
+
+            # Persist the next available time for this domain so subsequent calls
+            # to batch_requests also respect the same rate limit window.
+            _NEXT_AVAILABLE_TIME[domain] = next_available
         else:
             # No rate limit, process all concurrently
             tasks = [

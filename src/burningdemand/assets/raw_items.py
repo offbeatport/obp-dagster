@@ -10,6 +10,7 @@ from burningdemand.utils.url import normalize_url, url_hash
 @asset(
     partitions_def=source_day_partitions,
     group_name="bronze",
+    pool="source_api_rate_limit",
     description="Collect raw issues from external sources (GitHub, StackOverflow, Reddit, HackerNews). Stores title, body, URL, and metadata for each collected item.",
 )
 async def raw_items(

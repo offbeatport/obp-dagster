@@ -16,15 +16,11 @@ schedule_storage:
   config:
     base_dir: ./dagster_home
 
-run_coordinator:
-  module: dagster.core.run_coordinator
-  class: QueuedRunCoordinator
-  config:
+concurrency:
+  pools:
+    granularity: op
+    limits:
+      - name: "source_api_rate_limit"
+        limit: 1
+  runs:
     max_concurrent_runs: 5
-
-run_coordinator:
-  module: dagster.core.run_coordinator
-  class: QueuedRunCoordinator
-  # config is now empty because the limits moved to the top level
-  config: {} 
-
