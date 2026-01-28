@@ -16,7 +16,6 @@ from .resources.collectors.collectors_resource import CollectorsResource
 from .resources.duckdb_resource import DuckDBResource
 from .resources.embedding_resource import EmbeddingResource
 from .resources.pocketbase_resource import PocketBaseResource
-from .resources.redis_resource import RedisResource
 
 # Combine all assets
 # Assets use AssetKey with prefixes (bronze, silver, gold) in their dependencies
@@ -39,6 +38,5 @@ defs = Definitions(
         "collector": CollectorsResource(),
         "llm": LLMResource(model=llm_model),
         "pb": PocketBaseResource.from_env(),
-        "redis": RedisResource(),
     },
 )
