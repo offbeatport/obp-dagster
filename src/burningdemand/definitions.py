@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from dagster import Definitions
+from dagster import Definitions, EnvVar
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -13,6 +13,10 @@ from .assets import raw_items, embeddings, clusters, issues, live_issues
 
 from .resources.llm_resource import LLMResource
 from .resources.collectors.collectors_resource import CollectorsResource
+from .resources.collectors.github_collector import GitHubCollector
+from .resources.collectors.stackoverflow_collector import StackOverflowCollector
+from .resources.collectors.reddit_collector import RedditCollector
+from .resources.collectors.hackernews_collector import HackerNewsCollector
 from .resources.duckdb_resource import DuckDBResource
 from .resources.embedding_resource import EmbeddingResource
 from .resources.pocketbase_resource import PocketBaseResource
@@ -35,7 +39,17 @@ defs = Definitions(
     resources={
         "db": DuckDBResource(),
         "embedding": EmbeddingResource(),
-        "collector": CollectorsResource(),
+        "collector": CollectorsResource(
+            github_collector=GitHubCollector(github_token=EnvVar("GITHUB_TOKEN")),
+            stackoverflow_collector=StackOverflowCollector(
+                stackexchange_key=os.getenv("STACKEXCHANGE_KEY"),
+            ),
+            reddit_collector=RedditCollector(
+                reddit_client_id=os.getenv("REDDIT_CLIENT_ID"),
+                reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+            ),
+            hackernews_collector=HackerNewsCollector(),
+        ),
         "llm": LLMResource(model=llm_model),
         "pb": PocketBaseResource.from_env(),
     },

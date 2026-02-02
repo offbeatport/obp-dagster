@@ -15,6 +15,7 @@ dependencies = [
     "tenacity",
     "scikit-learn",
     "hdbscan",
+    "pyrate-limiter",
 ]
 name = "obp-dagster"
 requires-python = ">=3.10,<3.15"

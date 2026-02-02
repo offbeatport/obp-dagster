@@ -14,7 +14,6 @@ services:
       - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCANGE_KEY}
-      - REDIS_URL=redis://dagster-redis:6379/0
     volumes:
       - dagster_home:/opt/dagster/dagster_home
       # Shared DuckDB data directory (./data inside the container)
@@ -47,7 +46,6 @@ services:
       - PB_PASSWORD=${PB_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
-      - REDIS_URL=redis://dagster-redis:6379/0
     volumes:
       - dagster_home:/opt/dagster/dagster_home
       # Shared DuckDB data directory (./data inside the container)
@@ -68,18 +66,6 @@ services:
       start_period: 10s
     depends_on:
       - dagster-webserver
-      - redis
-
-  redis:
-    image: redis:7-alpine
-    container_name: dagster-redis
-    restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    deploy:
-      resources:
-        limits:
-          cpus: '0.2'
-          memory: 128M
 
 volumes:
   dagster_home:
