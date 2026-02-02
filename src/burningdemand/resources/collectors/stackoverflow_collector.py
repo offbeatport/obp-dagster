@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from dagster import ConfigurableResource
 from pyrate_limiter import Duration
-from pyrate_limiter.limiter_factory import create_inmemory_limiter
+from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
 from burningdemand.utils.url import iso_date_to_utc_bounds
@@ -18,7 +18,6 @@ from .queries import (
 )
 
 
-# 30 requests per minute (shared across collect() calls)
 RATE_LIMITER = create_sqlite_limiter(
     rate_per_duration=60,
     duration=Duration.MINUTE,

@@ -47,9 +47,8 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - STACKEXCHANGE_KEY=${STACKEXCHANGE_KEY}
     volumes:
-      - dagster_home:/opt/dagster/dagster_home
-      # Shared DuckDB data directory (./data inside the container)
-      - duckdb_data:/opt/dagster/app/data
+      - dagster_home:/opt/dagster/dagster_home      
+      - data:/opt/dagster/app/data
     command: [ "dagster-daemon", "run", "-m", "burningdemand.definitions" ]
     deploy:
       resources:
@@ -69,4 +68,4 @@ services:
 
 volumes:
   dagster_home:
-  duckdb_data:
+  data:
