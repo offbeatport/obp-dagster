@@ -1,7 +1,12 @@
 # burningdemand_dagster/assets/embeddings.py
 import pandas as pd
 import numpy as np
-from dagster import AssetExecutionContext, MaterializeResult, asset
+from dagster import (
+    AssetExecutionContext,
+    AutomationCondition,
+    MaterializeResult,
+    asset,
+)
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -13,6 +18,10 @@ from dagster import Config
     partitions_def=daily_partitions,
     group_name="silver",
     deps=["raw_items"],
+    automation_condition=AutomationCondition.eager()
+    .without(AutomationCondition.in_latest_time_window())
+    .without(~AutomationCondition.any_deps_missing())
+    .with_label("eager_allow_missing"),
     description="Generate vector embeddings for raw items using sentence transformers. Converts title+body text into 384-dimensional vectors for semantic similarity and clustering.",
 )
 def embeddings(

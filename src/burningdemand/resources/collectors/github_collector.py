@@ -7,7 +7,6 @@ import httpx
 from dagster import ConfigurableResource, EnvVar
 from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import (
-    create_inmemory_limiter,
     create_sqlite_limiter,
 )
 
@@ -82,7 +81,8 @@ class GitHubCollector(ConfigurableResource):
             specs,
             limiter=RATE_LIMITER,
         )
-
+        self._context.log.info(f"step222")
+        self._context.log.info(f"responses: {responses}")
         seen = set()
         items = []
         for resp in responses:
@@ -101,7 +101,9 @@ class GitHubCollector(ConfigurableResource):
                             "body": body[: get_body_max_length()],
                             "created_at": it.get("created_at") or "",
                             "comment_count": it.get("comments", 0) or 0,
-                            "vote_count": 0,
+                            "vote_count": it.get("reactions.total_count", 0) or 0,
+                            "org_name": url.split("/")[3],
+                            "product_name": url.split("/")[4],
                         }
                     )
 

@@ -53,7 +53,11 @@ class DuckDBResource(ConfigurableResource):
         full_table_path = f"{schema}.{table}"
 
         # Filter DF to requested columns and prepare SQL string
-        upsert_data = df[columns]
+        upsert_data = df[columns].copy()
+        # DuckDB does not recognize pandas 'string' / 'string[pyarrow]' dtype; use object so it maps to VARCHAR
+        for col in upsert_data.columns:
+            if pd.api.types.is_string_dtype(upsert_data[col]):
+                upsert_data[col] = upsert_data[col].astype(object)
         cols_str = ", ".join(columns)
 
         with self._get_conn() as conn:

@@ -1,7 +1,12 @@
 # burningdemand_dagster/assets/live_issues.py
 import asyncio
 import pandas as pd
-from dagster import AssetExecutionContext, MaterializeResult, asset
+from dagster import (
+    AssetExecutionContext,
+    MaterializeResult,
+    AutoMaterializePolicy,
+    asset,
+)
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -19,6 +24,7 @@ _SOURCE_TYPE_MAP = {
     partitions_def=daily_partitions,
     group_name="gold",
     deps=["issues"],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
     description="Sync labeled issues to PocketBase for live access. Creates or updates issue records in the external system.",
 )
 async def live_issues(

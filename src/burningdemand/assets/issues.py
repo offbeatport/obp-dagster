@@ -1,8 +1,8 @@
 # burningdemand_dagster/assets/issues.py
 import asyncio
 import hashlib
-import json
 import os
+import numpy as np
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
 from litellm import acompletion
@@ -14,12 +14,12 @@ from dagster import (
     MetadataValue,
     asset,
 )
-
+from pprint import pprint
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.llm_resource import LLMResource
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from burningdemand.resources.embedding_resource import EmbeddingResource
 from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
+from burningdemand.utils.cluster_representatives import get_cluster_representatives
 
 
 def get_unlabeled_clusters(db: DuckDBResource, date: str) -> pd.DataFrame:
@@ -86,12 +86,8 @@ def prepare_clusters(
     db: DuckDBResource,
     date: str,
     cluster_ids: List[int],
-    embedding: "EmbeddingResource",
 ) -> Tuple[Dict[int, List[str]], Dict[int, str], Dict[int, str]]:
     """Get representative titles and clean_body snippets for each cluster using stored embeddings."""
-    import numpy as np
-    import pandas as pd
-    from burningdemand.utils.cluster_representatives import get_cluster_representatives
 
     titles_by_cluster = {}
     snippets_by_cluster = {}
@@ -114,7 +110,8 @@ def prepare_clusters(
             """,
             [date, cid],
         )
-
+        pprint(cluster_data.loc[19, "title"])
+        exit()
         if len(cluster_data) == 0:
             titles_by_cluster[cid] = []
             snippets_by_cluster[cid] = ""
@@ -135,9 +132,7 @@ def prepare_clusters(
         )
 
         # Get representatives (will clean body internally)
-        titles, snippets = get_cluster_representatives(
-            cluster_items, embeddings_array, k=5
-        )
+        titles, snippets = get_cluster_representatives(cluster_items, embeddings_array)
 
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
@@ -159,6 +154,7 @@ async def label_cluster_with_llm(
     results: List[dict],
     failed: List[dict],
     errors: List[str],
+    context: AssetExecutionContext,
 ) -> None:
     """Label a single cluster using LLM with retry and validation."""
     async with sem:
@@ -199,6 +195,16 @@ Return ONLY valid JSON matching this exact schema:
   "impact_level": "low|medium|high"
 }}"""
 
+        context.log.info(f"Prompt: {prompt}")
+        context.log.info(f"Size: {size}")
+        context.log.info(f"Authority score: {authority_score}")
+        context.log.info(f"Titles: {titles}")
+        context.log.info(f"Snippets: {snippets}")
+        context.log.info(f"Fingerprint: {fingerprint}")
+        context.log.info(f"Date: {date}")
+        context.log.info(f"DB: {db}")
+        context.log.info(f"LLM: {llm.model}")
+        return
         # Try local model first, fallback to remote on failure/large clusters
         models_to_try = []
         if size > 50:  # Large clusters: try remote first
@@ -352,7 +358,6 @@ async def issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
     llm: LLMResource,
-    embedding: EmbeddingResource,
 ) -> MaterializeResult:
     date = context.partition_key
 
@@ -362,9 +367,11 @@ async def issues(
         return MaterializeResult(metadata={"labeled": 0})
 
     cluster_ids = unlabeled["cluster_id"].astype(int).tolist()
-    titles_by_cluster, snippets_by_cluster, _ = prepare_clusters(
-        db, date, cluster_ids, embedding
-    )
+    titles_by_cluster, snippets_by_cluster, _ = prepare_clusters(db, date, cluster_ids)
+
+    pprint(titles_by_cluster)
+    pprint(snippets_by_cluster)
+    return
 
     # Compute fingerprints for all clusters
     fingerprints_by_cluster = {}
@@ -376,7 +383,15 @@ async def issues(
     errors = []
     results = []
     failed = []
-
+    context.log.info(f"Snippets by cluster: {snippets_by_cluster}")
+    context.log.info(f"Fingerprints by cluster: {fingerprints_by_cluster}")
+    context.log.info(f"Titles by cluster: {titles_by_cluster}")
+    context.log.info(f"Cluster ids: {cluster_ids}")
+    context.log.info(f"Unlabeled: {unlabeled.to_dict(orient='records')}")
+    context.log.info(f"Results: {results}")
+    context.log.info(f"Failed: {failed}")
+    context.log.info(f"Errors: {errors}")
+    return
     await asyncio.gather(
         *[
             label_cluster_with_llm(
@@ -393,6 +408,7 @@ async def issues(
                 results,
                 failed,
                 errors,
+                context,
             )
             for _, r in unlabeled.iterrows()
         ]

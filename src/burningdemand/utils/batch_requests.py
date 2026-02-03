@@ -27,6 +27,7 @@ async def batch_requests(
 
     n = len(requests)
     start = time.monotonic()
+    context.log.info(f"Batch requested: {n} requests (launching concurrently)")
 
     async def run_request(idx: int, req: dict) -> tuple[int, httpx.Response]:
         await limiter.try_acquire_async("request")
@@ -44,5 +45,5 @@ async def batch_requests(
 
     ordered = [results[i] for i in range(n)]
     elapsed = time.monotonic() - start
-    context.log.info(f"{n} requests at once, batch took {elapsed:.2f}s")
+    context.log.info(f"Batch completed: {n} requests in {elapsed:.2f}s")
     return ordered

@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
     created_at      TIMESTAMP,
     comment_count   INTEGER,
     vote_count      INTEGER,
-    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    org_name        VARCHAR,
+    product_name    VARCHAR,
+    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 );
 
 

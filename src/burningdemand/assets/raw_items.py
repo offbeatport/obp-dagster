@@ -39,20 +39,18 @@ async def raw_items(
     df["source"] = source
     df["collection_date"] = date
 
-    # enforce expected cols & sizes - convert to object dtype for DuckDB compatibility
+    # String-like columns: use object so DuckDB gets VARCHAR (pandas "string" dtype is reported as "str" and DuckDB doesn't recognize it in conn.register())
     df["title"] = df["title"].fillna("").astype("object")
     df["body"] = df["body"].fillna("").astype("object")
     df["url"] = df["url"].astype("object")
     df["url_hash"] = df["url_hash"].astype("object")
     df["source"] = df["source"].astype("object")
-    df["collection_date"] = df["collection_date"].astype("object")
-    df["created_at"] = df["created_at"].fillna("").astype("object")
-
-    # Handle comment_count and vote_count (default to 0 if not present)
-    if "comment_count" not in df.columns:
-        df["comment_count"] = 0
-    if "vote_count" not in df.columns:
-        df["vote_count"] = 0
+    df["org_name"] = df["org_name"].fillna("").astype("object")
+    df["product_name"] = df["product_name"].fillna("").astype("object")
+    df["collection_date"] = pd.to_datetime(
+        df["collection_date"], format="%Y-%m-%d", errors="coerce"
+    ).dt.date
+    df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
     df["comment_count"] = df["comment_count"].fillna(0).astype(int)
     df["vote_count"] = df["vote_count"].fillna(0).astype(int)
 
@@ -70,6 +68,8 @@ async def raw_items(
             "created_at",
             "comment_count",
             "vote_count",
+            "org_name",
+            "product_name",
         ],
     )
 

@@ -3,7 +3,12 @@ import pandas as pd
 import numpy as np
 import hdbscan
 
-from dagster import AssetExecutionContext, MaterializeResult, asset
+from dagster import (
+    AssetExecutionContext,
+    AutoMaterializePolicy,
+    MaterializeResult,
+    asset,
+)
 from datetime import datetime, timedelta
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -13,6 +18,7 @@ from burningdemand.resources.duckdb_resource import DuckDBResource
     partitions_def=daily_partitions,
     group_name="silver",
     deps=["embeddings"],
+    auto_materialize_policy=AutoMaterializePolicy.eager(),
     description="Cluster items by similarity using HDBSCAN on stored embeddings. Uses rolling window (last 7 days) to allow clusters to grow day-over-day and detect heat signals. Groups similar issues together, allows noise/unclustered items, and stores quality metrics (outlier_ratio, mean_distance, authority_score). Authority score = sum of votes + 0.5 * comments to distinguish high-engagement signals from noise.",
 )
 def clusters(
@@ -21,17 +27,17 @@ def clusters(
 ) -> MaterializeResult:
 
     date = context.partition_key
-
-    # Rolling window: cluster last 7 days of data
-
     date_obj = datetime.strptime(date, "%Y-%m-%d")
-    window_start = (date_obj - timedelta(days=6)).strftime(
-        "%Y-%m-%d"
-    )  # Last 7 days inclusive
+    window_start = (date_obj - timedelta(days=6)).strftime("%Y-%m-%d")
 
     context.log.info(f"Clustering rolling window: {window_start} to {date} (7 days)")
 
-    # Get items with embeddings from the rolling window that haven't been clustered for this date
+    # Clear existing cluster data for this partition so rematerialization replaces everything
+    # (allows changing HDBSCAN parameters and re-running)
+    db.execute("DELETE FROM silver.cluster_assignments WHERE cluster_date = ?", [date])
+    db.execute("DELETE FROM silver.clusters WHERE cluster_date = ?", [date])
+
+    # Get all items with embeddings in the rolling window (no filter by prior clustering)
     data = db.query_df(
         """
         SELECT 
@@ -43,35 +49,19 @@ def clusters(
         JOIN bronze.raw_items b ON e.url_hash = b.url_hash
         WHERE b.collection_date >= ?
           AND b.collection_date <= ?
-          AND NOT EXISTS (
-              SELECT 1 FROM silver.cluster_assignments ca
-              WHERE ca.url_hash = e.url_hash
-                AND ca.cluster_date = ?
-          )
         """,
-        [window_start, date, date],
+        [window_start, date],
     )
 
     if len(data) == 0:
-        # Check if items were already clustered for this date
-        existing = db.query_df(
-            """
-            SELECT COUNT(*) as cnt
-            FROM silver.clusters
-            WHERE cluster_date = ?
-            """,
-            [date],
+        return MaterializeResult(
+            metadata={
+                "clusters": 0,
+                "items": 0,
+                "noise": 0,
+                "status": "no_items_in_window",
+            }
         )
-        if existing.iloc[0]["cnt"] > 0:
-            return MaterializeResult(
-                metadata={
-                    "clusters": 0,
-                    "items": 0,
-                    "noise": 0,
-                    "status": "already_clustered",
-                }
-            )
-        return MaterializeResult(metadata={"clusters": 0, "items": 0, "noise": 0})
 
     context.log.info(f"Clustering {len(data)} items with stored embeddings...")
 
