@@ -16,32 +16,15 @@ from litellm import acompletion
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.cluster_representatives import get_cluster_representatives
-from burningdemand.utils.llm_schema import (
-    CATEGORIES,
-    IssueLabel,
-    extract_first_json_obj,
-)
+from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
+from burningdemand.utils.prompts import build_label_prompt, build_system_prompt
 
 LLM_MODEL_DEFAULT = "ollama/gemma3:4b"
 
-
-def build_label_prompt(titles: List[str], size: int, snippets: str) -> str:
-    """Build the LLM prompt for labeling a cluster (canonical title, category, etc.)."""
-    titles_str = "\n".join([f"- {t}" for t in titles if t])
-    snippets_section = f"\n\nSnippets:\n{snippets}" if snippets else ""
-    return f"""Analyze these {len(titles)} issues (sampled from a cluster of {size}):
-
-Titles:
-{titles_str}{snippets_section}
-
-Return ONLY valid JSON matching this exact schema:
-{{
-  "canonical_title": "Generic problem (max 120 chars)",
-  "category": ["ai", "devtools"] (array of one or more of: {", ".join(CATEGORIES)}),
-  "description": "Root problem in a few sentences. Make sure to include enough detail to understand the problem and how it affects the user. Keep it concise and to the point. The purpose is so who sees this can pick up and fix it as a product to solve a real user pain and therefore makemoney.",
-  "would_pay_signal": true or false,
-  "impact_level": "low|medium|high"
-}}"""
+# How much cluster context we send to the LLM per cluster (single place for titles + snippets caps)
+MAX_REPRESENTATIVES_FOR_LABELING = 10
+MAX_SNIPPETS_FOR_LABELING = 5
+MAX_BODY_LENGTH_FOR_SNIPPET = 500
 
 
 def clear_issues_data_for_date(db: DuckDBResource, date: str) -> None:
@@ -108,9 +91,9 @@ def prepare_clusters(
         titles, snippets = get_cluster_representatives(
             cluster_items,
             embeddings_array,
-            max_representatives_count=10,
-            max_snippets_count=5,
-            max_body_length=500,
+            max_representatives_count=MAX_REPRESENTATIVES_FOR_LABELING,
+            max_snippets_count=MAX_SNIPPETS_FOR_LABELING,
+            max_body_length=MAX_BODY_LENGTH_FOR_SNIPPET,
         )
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
@@ -132,6 +115,11 @@ async def label_cluster_with_llm(
 ) -> None:
     """Label one cluster via LLM. Model from env LLM_MODEL (default: ollama/gemma3:4b)."""
     async with sem:
+        print("start--------------------------------")
+        pprint(titles)
+        pprint(size)
+        pprint(snippets)
+        print(f"end--------------------------------")
         prompt = build_label_prompt(titles, size, snippets)
         label_data = None
         last_error = None
@@ -140,7 +128,10 @@ async def label_cluster_with_llm(
         try:
             response = await acompletion(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": build_system_prompt()},
+                    {"role": "user", "content": prompt},
+                ],
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )

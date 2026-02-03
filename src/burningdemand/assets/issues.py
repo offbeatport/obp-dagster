@@ -39,7 +39,6 @@ async def issues(
 
     cluster_ids = clusters["cluster_id"].astype(int).tolist()
     titles_by_cluster, snippets_by_cluster = prepare_clusters(db, date, cluster_ids)
-
     results: List[dict] = []
     failed: List[dict] = []
     errors: List[str] = []
@@ -51,7 +50,7 @@ async def issues(
                 int(r["cluster_id"]),
                 int(r["cluster_size"]),
                 float(r.get("authority_score", 0.0)),
-                titles_by_cluster.get(int(r["cluster_id"]), [])[:5],
+                titles_by_cluster.get(int(r["cluster_id"]), []),
                 snippets_by_cluster.get(int(r["cluster_id"]), ""),
                 date,
                 sem,
