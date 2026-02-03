@@ -86,9 +86,9 @@ def select_representatives(
 def get_cluster_representatives(
     items_df: pd.DataFrame,
     embeddings_array: np.ndarray,
-    max_representatives_count: int = 10,
-    max_snippets_count: int = 5,
-    max_body_length: int = 500,
+    max_representatives_count: int,
+    max_snippets_count: int,
+    max_body_length: int,
 ) -> Tuple[List[str], str]:
     """
     Get representative titles and snippets for a cluster.

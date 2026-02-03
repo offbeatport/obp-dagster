@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS silver.cluster_assignments (
 CREATE TABLE IF NOT EXISTS gold.issues (
     cluster_date        DATE,
     cluster_id          INTEGER,
-    cluster_fingerprint VARCHAR,
     canonical_title     VARCHAR,
     category            VARCHAR,
     description         VARCHAR,

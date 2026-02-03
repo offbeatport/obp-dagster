@@ -2,6 +2,8 @@
 import pandas as pd
 import numpy as np
 import hdbscan
+from datetime import datetime, timedelta
+from typing import Optional, Tuple
 
 from dagster import (
     AssetExecutionContext,
@@ -9,9 +11,135 @@ from dagster import (
     MaterializeResult,
     asset,
 )
-from datetime import datetime, timedelta
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
+
+
+def clear_cluster_data_for_date(db: DuckDBResource, date: str) -> None:
+    """Remove existing cluster_assignments and clusters for this partition (enables rematerialization)."""
+    db.execute("DELETE FROM silver.cluster_assignments WHERE cluster_date = ?", [date])
+    db.execute("DELETE FROM silver.clusters WHERE cluster_date = ?", [date])
+
+
+def load_embeddings_in_window(
+    db: DuckDBResource, window_start: str, date: str
+) -> Tuple[Optional[pd.DataFrame], Optional[np.ndarray]]:
+    """Load items with embeddings in [window_start, date]. Returns (data, embeddings_array) or (None, None) if empty."""
+    data = db.query_df(
+        """
+        SELECT
+            e.url_hash,
+            e.embedding,
+            b.vote_count,
+            b.comment_count
+        FROM silver.embeddings e
+        JOIN bronze.raw_items b ON e.url_hash = b.url_hash
+        WHERE b.collection_date >= ?
+          AND b.collection_date <= ?
+        """,
+        [window_start, date],
+    )
+    if len(data) == 0:
+        return None, None
+    embeddings_array = np.array(data["embedding"].tolist(), dtype=np.float32)
+    return data, embeddings_array
+
+
+def run_hdbscan(embeddings_array: np.ndarray) -> np.ndarray:
+    """Run HDBSCAN and return cluster labels (-1 = noise)."""
+    n = len(embeddings_array)
+    min_cluster_size = max(5, n // 200)
+    min_samples = max(3, min_cluster_size // 2)
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        metric="euclidean",
+        cluster_selection_method="eom",
+    )
+    return clusterer.fit_predict(embeddings_array)
+
+
+def compute_cluster_metrics(
+    data: pd.DataFrame,
+    embeddings_array: np.ndarray,
+    labels: np.ndarray,
+) -> Tuple[dict, int, float]:
+    """Compute per-cluster metrics (size, mean_distance, authority_score) and global noise/outlier_ratio."""
+    noise_count = int(np.sum(labels == -1))
+    outlier_ratio = float(noise_count / len(labels)) if len(labels) > 0 else 0.0
+    unique_labels = np.unique(labels)
+    cluster_ids = unique_labels[unique_labels != -1]
+
+    cluster_metrics = {}
+    for cid in cluster_ids:
+        cluster_mask = labels == cid
+        cluster_points = embeddings_array[cluster_mask]
+        cluster_data = data.iloc[np.where(cluster_mask)[0]]
+        centroid = np.mean(cluster_points, axis=0)
+        distances = np.linalg.norm(cluster_points - centroid, axis=1)
+        mean_distance = float(np.mean(distances))
+        vote_sum = int(cluster_data["vote_count"].sum())
+        comment_sum = int(cluster_data["comment_count"].sum())
+        authority_score = vote_sum + comment_sum * 0.5
+        cluster_metrics[int(cid)] = {
+            "size": int(np.sum(cluster_mask)),
+            "mean_distance": mean_distance,
+            "authority_score": float(authority_score),
+            "vote_sum": vote_sum,
+            "comment_sum": comment_sum,
+        }
+    return cluster_metrics, noise_count, outlier_ratio
+
+
+def persist_clusters(
+    db: DuckDBResource,
+    date: str,
+    data: pd.DataFrame,
+    labels: np.ndarray,
+    cluster_metrics: dict,
+    outlier_ratio: float,
+) -> int:
+    """Write cluster_assignments and cluster metadata to DB. Returns number of cluster rows written."""
+    assignments_df = pd.DataFrame(
+        [
+            {
+                "url_hash": data["url_hash"].iloc[i],
+                "cluster_date": date,
+                "cluster_id": int(labels[i]),
+            }
+            for i in range(len(data))
+        ]
+    )
+    db.upsert_df(
+        "silver",
+        "cluster_assignments",
+        assignments_df,
+        ["url_hash", "cluster_date", "cluster_id"],
+    )
+    for cid, metrics in cluster_metrics.items():
+        db.execute(
+            """
+            INSERT INTO silver.clusters (
+                cluster_date, cluster_id, cluster_size,
+                outlier_ratio, mean_distance, authority_score
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (cluster_date, cluster_id) DO UPDATE SET
+                cluster_size = EXCLUDED.cluster_size,
+                outlier_ratio = EXCLUDED.outlier_ratio,
+                mean_distance = EXCLUDED.mean_distance,
+                authority_score = EXCLUDED.authority_score
+            """,
+            [
+                date,
+                cid,
+                metrics["size"],
+                outlier_ratio,
+                metrics["mean_distance"],
+                metrics["authority_score"],
+            ],
+        )
+    return len(cluster_metrics)
 
 
 @asset(
@@ -25,35 +153,16 @@ def clusters(
     context: AssetExecutionContext,
     db: DuckDBResource,
 ) -> MaterializeResult:
-
     date = context.partition_key
     date_obj = datetime.strptime(date, "%Y-%m-%d")
     window_start = (date_obj - timedelta(days=6)).strftime("%Y-%m-%d")
 
     context.log.info(f"Clustering rolling window: {window_start} to {date} (7 days)")
 
-    # Clear existing cluster data for this partition so rematerialization replaces everything
-    # (allows changing HDBSCAN parameters and re-running)
-    db.execute("DELETE FROM silver.cluster_assignments WHERE cluster_date = ?", [date])
-    db.execute("DELETE FROM silver.clusters WHERE cluster_date = ?", [date])
+    clear_cluster_data_for_date(db, date)
+    data, embeddings_array = load_embeddings_in_window(db, window_start, date)
 
-    # Get all items with embeddings in the rolling window (no filter by prior clustering)
-    data = db.query_df(
-        """
-        SELECT 
-            e.url_hash, 
-            e.embedding,
-            b.vote_count, 
-            b.comment_count
-        FROM silver.embeddings e
-        JOIN bronze.raw_items b ON e.url_hash = b.url_hash
-        WHERE b.collection_date >= ?
-          AND b.collection_date <= ?
-        """,
-        [window_start, date],
-    )
-
-    if len(data) == 0:
+    if data is None or embeddings_array is None:
         return MaterializeResult(
             metadata={
                 "clusters": 0,
@@ -64,120 +173,13 @@ def clusters(
         )
 
     context.log.info(f"Clustering {len(data)} items with stored embeddings...")
-
-    # Convert stored embeddings to numpy array
-    embeddings_array = np.array(data["embedding"].tolist(), dtype=np.float32)
-
-    # HDBSCAN parameters: min_cluster_size and min_samples
-    # min_cluster_size: minimum size of clusters
-    # min_samples: conservative estimate of number of samples in cluster
-    min_cluster_size = max(
-        5, len(embeddings_array) // 200
-    )  # At least 5, or 0.5% of data
-    min_samples = max(3, min_cluster_size // 2)
-
-    context.log.info(
-        f"Running HDBSCAN with min_cluster_size={min_cluster_size}, min_samples={min_samples} on {len(embeddings_array)} items"
+    labels = run_hdbscan(embeddings_array)
+    cluster_metrics, noise_count, outlier_ratio = compute_cluster_metrics(
+        data, embeddings_array, labels
     )
-
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples,
-        metric="euclidean",
-        cluster_selection_method="eom",
+    created_clusters = persist_clusters(
+        db, date, data, labels, cluster_metrics, outlier_ratio
     )
-    labels = clusterer.fit_predict(embeddings_array)
-
-    # Compute quality metrics
-    # outlier_ratio: fraction of points marked as noise (label == -1)
-    noise_count = int(np.sum(labels == -1))
-    outlier_ratio = float(noise_count / len(labels)) if len(labels) > 0 else 0.0
-
-    # Get unique cluster IDs (excluding noise)
-    unique_labels = np.unique(labels)
-    cluster_ids = unique_labels[unique_labels != -1]
-
-    # Compute metrics for each cluster: mean_distance and authority_score
-    cluster_metrics = {}
-    for cid in cluster_ids:
-        cluster_mask = labels == cid
-        cluster_points = embeddings_array[cluster_mask]
-        cluster_data = data[cluster_mask]
-
-        # Compute centroid
-        centroid = np.mean(cluster_points, axis=0)
-
-        # Compute distances from points to centroid
-        distances = np.linalg.norm(cluster_points - centroid, axis=1)
-        mean_distance = float(np.mean(distances))
-
-        # Compute Authority Score: sum of votes + comments (weighted by engagement)
-        # This distinguishes high-engagement signals from noise
-        vote_sum = int(cluster_data["vote_count"].sum())
-        comment_sum = int(cluster_data["comment_count"].sum())
-        authority_score = vote_sum + (
-            comment_sum * 0.5
-        )  # Comments weighted less than votes
-
-        cluster_metrics[int(cid)] = {
-            "size": int(np.sum(cluster_mask)),
-            "mean_distance": mean_distance,
-            "authority_score": float(authority_score),
-            "vote_sum": vote_sum,
-            "comment_sum": comment_sum,
-        }
-
-    # Store cluster assignments in a mapping table (url_hash -> cluster_id)
-    # We'll create a simple mapping table for lookups
-    cluster_assignments = []
-    for idx, url_hash in enumerate(data["url_hash"]):
-        cluster_assignments.append(
-            {
-                "url_hash": url_hash,
-                "cluster_date": date,
-                "cluster_id": int(labels[idx]),
-            }
-        )
-
-    # Store assignments (upsert to handle re-runs)
-    if cluster_assignments:
-        assignments_df = pd.DataFrame(cluster_assignments)
-        db.upsert_df(
-            "silver",
-            "cluster_assignments",
-            assignments_df,
-            ["url_hash", "cluster_date", "cluster_id"],
-        )
-
-    # Write cluster metadata with quality metrics and authority score
-    created_clusters = 0
-    for cid, metrics in cluster_metrics.items():
-        db.execute(
-            """
-            INSERT INTO silver.clusters (
-                cluster_date, cluster_id, cluster_size, 
-                outlier_ratio, mean_distance, authority_score
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (cluster_date, cluster_id) DO UPDATE SET 
-                cluster_size = EXCLUDED.cluster_size,
-                outlier_ratio = EXCLUDED.outlier_ratio,
-                mean_distance = EXCLUDED.mean_distance,
-                authority_score = EXCLUDED.authority_score
-            """,
-            [
-                date,
-                cid,
-                metrics["size"],
-                outlier_ratio,  # Store global outlier ratio for reference
-                metrics["mean_distance"],
-                metrics["authority_score"],
-            ],
-        )
-        created_clusters += 1
-
-    # Store global outlier ratio in a special record or metadata
-    # For now, we'll include it in the return metadata
 
     sizes = [m["size"] for m in cluster_metrics.values()] if cluster_metrics else [0]
     sizes_sorted = sorted(sizes) if sizes else [0]
@@ -187,7 +189,6 @@ def clusters(
         if len(sizes_sorted) >= 10
         else sizes_sorted[-1] if sizes_sorted else 0
     )
-
     authority_scores = (
         [m["authority_score"] for m in cluster_metrics.values()]
         if cluster_metrics

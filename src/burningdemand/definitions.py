@@ -11,7 +11,6 @@ if env_path.exists():
 # Import assets directly
 from .assets import raw_items, embeddings, clusters, issues, live_issues
 
-from .resources.llm_resource import LLMResource
 from .resources.collectors.collectors_resource import CollectorsResource
 from .resources.collectors.github_collector import GitHubCollector
 from .resources.collectors.stackoverflow_collector import StackOverflowCollector
@@ -32,8 +31,6 @@ all_assets = [
     live_issues,
 ]
 
-llm_model = os.getenv("LLM_MODEL", "groq/llama-3.1-70b-versatile")
-
 defs = Definitions(
     assets=all_assets,
     resources={
@@ -50,7 +47,6 @@ defs = Definitions(
             ),
             hackernews_collector=HackerNewsCollector(),
         ),
-        "llm": LLMResource(model=llm_model),
         "pb": PocketBaseResource.from_env(),
     },
 )
