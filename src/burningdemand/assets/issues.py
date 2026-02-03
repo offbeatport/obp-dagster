@@ -14,7 +14,6 @@ from dagster import (
     MetadataValue,
     asset,
 )
-from pprint import pprint
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.llm_resource import LLMResource
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -110,8 +109,7 @@ def prepare_clusters(
             """,
             [date, cid],
         )
-        pprint(cluster_data.loc[19, "title"])
-        exit()
+
         if len(cluster_data) == 0:
             titles_by_cluster[cid] = []
             snippets_by_cluster[cid] = ""
@@ -180,7 +178,6 @@ async def label_cluster_with_llm(
 
         titles_str = "\n".join([f"- {t}" for t in titles if t])
         snippets_section = f"\n\nSnippets:\n{snippets}" if snippets else ""
-
         prompt = f"""Analyze these {len(titles)} issues (sampled from a cluster of {size}):
 
 Titles:
@@ -195,16 +192,6 @@ Return ONLY valid JSON matching this exact schema:
   "impact_level": "low|medium|high"
 }}"""
 
-        context.log.info(f"Prompt: {prompt}")
-        context.log.info(f"Size: {size}")
-        context.log.info(f"Authority score: {authority_score}")
-        context.log.info(f"Titles: {titles}")
-        context.log.info(f"Snippets: {snippets}")
-        context.log.info(f"Fingerprint: {fingerprint}")
-        context.log.info(f"Date: {date}")
-        context.log.info(f"DB: {db}")
-        context.log.info(f"LLM: {llm.model}")
-        return
         # Try local model first, fallback to remote on failure/large clusters
         models_to_try = []
         if size > 50:  # Large clusters: try remote first
@@ -369,10 +356,6 @@ async def issues(
     cluster_ids = unlabeled["cluster_id"].astype(int).tolist()
     titles_by_cluster, snippets_by_cluster, _ = prepare_clusters(db, date, cluster_ids)
 
-    pprint(titles_by_cluster)
-    pprint(snippets_by_cluster)
-    return
-
     # Compute fingerprints for all clusters
     fingerprints_by_cluster = {}
     for cid in cluster_ids:
@@ -383,15 +366,7 @@ async def issues(
     errors = []
     results = []
     failed = []
-    context.log.info(f"Snippets by cluster: {snippets_by_cluster}")
-    context.log.info(f"Fingerprints by cluster: {fingerprints_by_cluster}")
-    context.log.info(f"Titles by cluster: {titles_by_cluster}")
-    context.log.info(f"Cluster ids: {cluster_ids}")
-    context.log.info(f"Unlabeled: {unlabeled.to_dict(orient='records')}")
-    context.log.info(f"Results: {results}")
-    context.log.info(f"Failed: {failed}")
-    context.log.info(f"Errors: {errors}")
-    return
+
     await asyncio.gather(
         *[
             label_cluster_with_llm(
