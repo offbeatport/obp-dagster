@@ -3,7 +3,6 @@ Helpers for the issues asset: cluster queries, LLM labeling, and DB writes.
 """
 
 import asyncio
-import json
 import logging
 from pprint import pprint
 from typing import Dict, List, Tuple
@@ -137,18 +136,14 @@ async def label_cluster_with_llm(
             )
             raw = response.choices[0].message.content
             data = extract_first_json_obj(raw)
-            pprint(data)
             label = IssueLabel.model_validate(data)
-            desc = label.description
-            description_str = (
-                json.dumps(desc.model_dump())
-                if hasattr(desc, "model_dump")
-                else json.dumps(desc)
-            )
             label_data = {
                 "canonical_title": label.canonical_title,
                 "category": ",".join(label.category) if label.category else "other",
-                "description": description_str,
+                "desc_problem": label.desc_problem or "",
+                "desc_current_solutions": label.desc_current_solutions or "",
+                "desc_impact": label.desc_impact or "",
+                "desc_details": label.desc_details or "",
                 "would_pay_signal": bool(label.would_pay_signal),
                 "impact_level": label.impact_level,
             }
@@ -163,7 +158,10 @@ async def label_cluster_with_llm(
                     "cluster_id": int(cid),
                     "canonical_title": label_data["canonical_title"],
                     "category": label_data["category"],
-                    "description": label_data["description"],
+                    "desc_problem": label_data["desc_problem"],
+                    "desc_current_solutions": label_data["desc_current_solutions"],
+                    "desc_impact": label_data["desc_impact"],
+                    "desc_details": label_data["desc_details"],
                     "would_pay_signal": label_data["would_pay_signal"],
                     "impact_level": label_data["impact_level"],
                     "cluster_size": int(size),
@@ -200,7 +198,10 @@ def save_results(
                 "cluster_id",
                 "canonical_title",
                 "category",
-                "description",
+                "desc_problem",
+                "desc_current_solutions",
+                "desc_impact",
+                "desc_details",
                 "would_pay_signal",
                 "impact_level",
                 "cluster_size",

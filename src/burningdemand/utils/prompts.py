@@ -32,12 +32,10 @@ Generate a JSON object with the following structure:
 {{
   "canonical_title": "A clear, compelling problem statement (max 120 chars)",
   "category": ["category1", "category2"],
-  "description": {{
-    "problem": "What breaks or fails; blocked workflow; immediate pain point (1-2 short paragraphs)",
-    "current_solutions": "What people try now; why current tools/workarounds fail (1-2 paragraphs)",
-    "impact": "Who is affected; when it hurts; downstream consequences (1 short paragraph)",
-    "details": "Technical constraints, scale, integration if relevant (optional, can be empty string)"
-  }},
+  "desc_problem": "What breaks or fails; blocked workflow; immediate pain point (1-2 short paragraphs)",
+  "desc_current_solutions": "What people try now; why current tools/workarounds fail (1-2 paragraphs)",
+  "desc_impact": "Who is affected; when it hurts; downstream consequences (1 short paragraph)",
+  "desc_details": "Technical constraints, scale, integration if relevant (optional, can be empty string)",
   "would_pay_signal": true/false,
   "impact_level": "low|medium|high"
 }}
@@ -59,11 +57,11 @@ Generate a JSON object with the following structure:
 - Choose categories that help builders and investors filter/discover this problem
 - Order by relevance (most relevant first)
 
-### description (JSON object with four keys)
-- **problem** (required): What specifically breaks or fails; what workflow is blocked; the immediate pain point. 1-2 short paragraphs. Give enough context for someone to understand the core issue.
-- **current_solutions** (required, can be ""): What do people try now? Why don't current tools/approaches work? Common workarounds and their limitations.
-- **impact** (required, can be ""): Who experiences this (team size, company stage, use cases)? When does it hurt most? Downstream consequences.
-- **details** (optional, can be ""): Technical constraints, scale considerations, integration requirements. Omit or use "" if not relevant.
+### desc_problem, desc_current_solutions, desc_impact, desc_details
+- **desc_problem** (required): What specifically breaks or fails; what workflow is blocked; the immediate pain point. 1-2 short paragraphs. Give enough context for someone to understand the core issue.
+- **desc_current_solutions** (can be ""): What do people try now? Why don't current tools/approaches work? Common workarounds and their limitations.
+- **desc_impact** (can be ""): Who experiences this (team size, company stage, use cases)? When does it hurt most? Downstream consequences.
+- **desc_details** (can be ""): Technical constraints, scale considerations, integration requirements. Omit or use "" if not relevant.
 
 - Write for busy engineers and PMs. Be concrete. Avoid jargon unless standard. Don't mention specific tools unless explaining why they fail.
 
@@ -96,8 +94,8 @@ Generate a JSON object with the following structure:
 # QUALITY CHECKS
 Before outputting, verify:
 - [ ] Title is under 120 chars and describes a problem, not a solution
-- [ ] description.problem has enough detail for someone to start building a solution
-- [ ] description.current_solutions explains why current approaches fail
+- [ ] desc_problem has enough detail for someone to start building a solution
+- [ ] desc_current_solutions explains why current approaches fail
 - [ ] Impact level matches the severity described
 - [ ] Categories are specific and relevant
 - [ ] would_pay_signal aligns with business impact
@@ -112,12 +110,10 @@ OUTPUT:
 {{
   "canonical_title": "No reliable way to test webhook integrations locally before deploying to production",
   "category": ["devtools", "payments"],
-  "description": {{
-    "problem": "Developers building applications with webhook-based integrations (payment processors, auth providers, event platforms) cannot reliably test webhook handling in local development. Webhooks require publicly accessible URLs, forcing deploy-to-staging or tunneling just to verify basic functionality.",
-    "current_solutions": "ngrok and similar tools require manual setup, break frequently, and create inconsistent URLs. Deploying to staging for every change slows iteration and risks production. Mocking payloads misses signature validation, timing, and retry behavior.",
-    "impact": "Any team integrating third-party services via webhooks—from startups to enterprise. Pain intensifies during rapid dev cycles; becomes critical when webhook failures cause payment errors, missed notifications, or data sync issues.",
-    "details": "Signature validation and retry semantics differ by provider; localhost exposure and TLS in dev add complexity."
-  }},
+  "desc_problem": "Developers building applications with webhook-based integrations (payment processors, auth providers, event platforms) cannot reliably test webhook handling in local development. Webhooks require publicly accessible URLs, forcing deploy-to-staging or tunneling just to verify basic functionality.",
+  "desc_current_solutions": "ngrok and similar tools require manual setup, break frequently, and create inconsistent URLs. Deploying to staging for every change slows iteration and risks production. Mocking payloads misses signature validation, timing, and retry behavior.",
+  "desc_impact": "Any team integrating third-party services via webhooks—from startups to enterprise. Pain intensifies during rapid dev cycles; becomes critical when webhook failures cause payment errors, missed notifications, or data sync issues.",
+  "desc_details": "Signature validation and retry semantics differ by provider; localhost exposure and TLS in dev add complexity.",
   "would_pay_signal": true,
   "impact_level": "high"
 }}
@@ -145,12 +141,10 @@ Return ONLY valid JSON:
 {
   "canonical_title": "Problem statement under 120 characters",
   "category": ["1-3 categories"],
-  "description": {
-    "problem": "What breaks; blocked workflow; pain point (1-2 paragraphs)",
-    "current_solutions": "What people try; why it fails (can be \"\")",
-    "impact": "Who is affected; consequences (can be \"\")",
-    "details": "Technical/scale/integration if relevant (can be \"\")"
-  },
+  "desc_problem": "What breaks; blocked workflow; pain point (1-2 paragraphs)",
+  "desc_current_solutions": "What people try; why it fails (can be \"\")",
+  "desc_impact": "Who is affected; consequences (can be \"\")",
+  "desc_details": "Technical/scale/integration if relevant (can be \"\")",
   "would_pay_signal": true/false,
   "impact_level": "low|medium|high"
 }
@@ -170,11 +164,11 @@ canonical_title:
 category:
 - 1-3 categories ordered by relevance
 
-description (object with four string keys):
-- problem: core problem and blocked workflow (required)
-- current_solutions: why current solutions/workarounds fail (can be "")
-- impact: who is affected and business/engineering impact (can be "")
-- details: optional technical constraints (can be "")
+desc_problem, desc_current_solutions, desc_impact, desc_details (four string fields):
+- desc_problem: core problem and blocked workflow (required)
+- desc_current_solutions: why current solutions/workarounds fail (can be "")
+- desc_impact: who is affected and business/engineering impact (can be "")
+- desc_details: optional technical constraints (can be "")
 
 Write for engineers, product builders, and investors. Be concrete and practical. Avoid unnecessary jargon.
 
@@ -199,7 +193,7 @@ QUALITY BAR
 Ensure:
 - Output is valid JSON only
 - Title describes a problem
-- Description explains impact and failed workarounds
+- desc_* fields explain impact and failed workarounds
 - Severity and payment signal match the evidence
 
 """

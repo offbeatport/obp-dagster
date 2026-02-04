@@ -12,7 +12,14 @@ if env_path.exists():
 from burningdemand.config import EMBEDDING_MODEL
 
 # Import assets directly
-from .assets import raw_items, embeddings, clusters, issues, live_issues
+from .assets import (
+    raw_items,
+    embeddings,
+    clusters,
+    issues,
+    live_issues,
+    live_evidence,
+)
 from .resources.collectors.collectors_resource import CollectorsResource
 from .resources.collectors.github_collector import GitHubCollector
 from .resources.collectors.hackernews_collector import HackerNewsCollector
@@ -31,6 +38,7 @@ all_assets = [
     clusters,
     issues,
     live_issues,
+    live_evidence,
 ]
 
 defs = Definitions(

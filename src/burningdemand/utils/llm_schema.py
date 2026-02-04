@@ -18,46 +18,28 @@ CATEGORIES = (
 )
 
 
-class DescriptionParts(BaseModel):
-    """Structured description fields returned by the LLM."""
-
-    problem: str = Field(description="What breaks or fails; blocked workflow; immediate pain.")
-    current_solutions: str = Field(
-        default="",
-        description="What people try now; why current tools/workarounds fail.",
-    )
-    impact: str = Field(
-        default="",
-        description="Who is affected; when it hurts; downstream consequences.",
-    )
-    details: str = Field(
-        default="",
-        description="Technical constraints, scale, integration if relevant.",
-    )
-
-
 class IssueLabel(BaseModel):
     canonical_title: str = Field()
     category: List[str] = Field(
         description="One or more of: " + ", ".join(CATEGORIES),
     )
-    description: DescriptionParts
+    desc_problem: str = Field(
+        description="What breaks or fails; blocked workflow; immediate pain.",
+    )
+    desc_current_solutions: str = Field(
+        default="",
+        description="What people try now; why current tools/workarounds fail.",
+    )
+    desc_impact: str = Field(
+        default="",
+        description="Who is affected; when it hurts; downstream consequences.",
+    )
+    desc_details: str = Field(
+        default="",
+        description="Technical constraints, scale, integration if relevant.",
+    )
     would_pay_signal: bool
     impact_level: Literal["low", "medium", "high"]
-
-    @field_validator("description", mode="before")
-    @classmethod
-    def validate_description(cls, v: object) -> DescriptionParts:
-        if isinstance(v, DescriptionParts):
-            return v
-        if isinstance(v, dict):
-            return DescriptionParts(
-                problem=str(v.get("problem", "")),
-                current_solutions=str(v.get("current_solutions", "")),
-                impact=str(v.get("impact", "")),
-                details=str(v.get("details", "")),
-            )
-        raise ValueError("description must be an object with problem, current_solutions, impact, details")
 
     @field_validator("category", mode="before")
     @classmethod

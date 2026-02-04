@@ -47,17 +47,20 @@ CREATE TABLE IF NOT EXISTS silver.cluster_assignments (
 
 -- 4. GOLD LAYER
 CREATE TABLE IF NOT EXISTS gold.issues (
-    cluster_date        DATE,
-    cluster_id          INTEGER,
-    canonical_title     VARCHAR,
-    category            VARCHAR,
-    description         JSON,
-    would_pay_signal    BOOLEAN,
-    impact_level        VARCHAR,
-    cluster_size        INTEGER,
-    authority_score     DOUBLE,
-    label_failed        BOOLEAN DEFAULT FALSE,
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    cluster_date           DATE,
+    cluster_id             INTEGER,
+    canonical_title        VARCHAR,
+    category               VARCHAR,
+    desc_problem           VARCHAR,
+    desc_current_solutions VARCHAR,
+    desc_impact            VARCHAR,
+    desc_details           VARCHAR,
+    would_pay_signal       BOOLEAN,
+    impact_level           VARCHAR,
+    cluster_size           INTEGER,
+    authority_score        DOUBLE,
+    label_failed           BOOLEAN DEFAULT FALSE,
+    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (cluster_date, cluster_id)
 );
 
