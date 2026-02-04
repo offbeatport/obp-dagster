@@ -1,0 +1,48 @@
+{'canonical_title': "Verified users can't configure precise email "
+                    'subscriptions for restricted hearing lists',
+ 'category': ['compliance', 'other', 'data'],
+ 'description': 'Verified (permissioned) users who have been approved to '
+                'access restricted hearing information need to subscribe to '
+                'hearing lists in a way that matches their needs — by '
+                'language/version, list type, or specific case identifiers '
+                '(case name, reference number, URN). Right now the '
+                'subscription workflow is fragmented or too coarse: users '
+                'either get broad, noisy emails, must repeatedly check a '
+                'portal, or rely on manual help from administrators. That '
+                'blocks the core workflow of timely, targeted delivery of '
+                'sensitive hearing updates to the right recipients.\n'
+                '\n'
+                'Teams currently try ad-hoc approaches: sending bulk emails to '
+                'manually curated lists, offering a single toggle '
+                'subscribe/unsubscribe per user, or asking users to manually '
+                'scan dashboards for new lists. Those approaches fail because '
+                "they can't express fine-grained filters (language variants, "
+                "list kinds), don't support subscribing by case-level "
+                'identifiers, produce duplicate or irrelevant notifications, '
+                'and give no reliable unsubscribe/audit trail. Publishers’ '
+                'manual processes (confirming uploads, choosing which list '
+                'version to send) are error-prone and create mismatch between '
+                'what was published and what subscribers expect.\n'
+                '\n'
+                'This hurts journalists, legal representatives, court admin '
+                'teams and any organization that relies on targeted delivery '
+                'of restricted notices. The pain is worst during busy '
+                'publication cycles or multi-jurisdiction rollouts when many '
+                'lists and versions are published daily — users either miss '
+                'important updates or are overwhelmed by noise. Downstream '
+                'consequences include missed reporting deadlines, operational '
+                'overhead for support teams, potential breaches of access '
+                'rules, and damaged trust between publishers and verified '
+                'users.\n'
+                '\n'
+                'Technically, a robust solution must integrate with the '
+                'verified-user identity/approval flow, support complex '
+                'subscription predicates (language/version, list type, case '
+                'identifiers), handle scheduled and manual publishing '
+                'workflows, deduplicate and throttle notifications, and '
+                'provide secure, auditable opt-in/opt-out controls. It must '
+                'scale to many lists and users across jurisdictions and '
+                'respect privacy/compliance constraints when distributing '
+                'restricted content.',
+ 'impact_level': 'medium',
+ 'would_pay_signal': True}
