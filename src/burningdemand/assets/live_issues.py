@@ -34,17 +34,13 @@ async def live_issues(
 ) -> MaterializeResult:
     date = context.partition_key
 
+    # Load all labeled issues for this partition; we check PocketBase
+    # to decide which need syncing, so PB is the source of truth.
     issues = db.query_df(
         """
         SELECT g.*
         FROM gold.issues g
         WHERE g.cluster_date = ?
-          AND NOT EXISTS (
-              SELECT 1 FROM pocketbase_sync ps
-              WHERE ps.cluster_date = g.cluster_date
-                AND ps.cluster_id = g.cluster_id
-          )
-    
         """,
         [date],
     )
@@ -73,15 +69,12 @@ async def live_issues(
         return pb_client.create("evidence", payload)
 
     for _, issue in issues.iterrows():
-        # Check if issue already exists (might have been created manually)
-        # Use a unique identifier based on cluster_date and cluster_id
+
         cluster_id = int(issue["cluster_id"])
         issue_title = str(issue["canonical_title"])
         issue_desc = str(issue["description"])
-        issue_cat = str(issue["category"])
+        issue_cat = str(issue["category"]).split(",").tolist()
 
-        # Check for existing issue by cluster_date and cluster_id
-        # Escape quotes in filter expression for PocketBase
         date_escaped = str(date).replace('"', '\\"')
         filter_expr = f'origin="collected" && cluster_date="{date_escaped}" && cluster_id={cluster_id}'
         existing_issue = await loop.run_in_executor(
@@ -169,11 +162,6 @@ async def live_issues(
                 )
                 ev_errors += 1
 
-        # Track sync
-        db.execute(
-            "INSERT INTO gold.live_issues (cluster_date, cluster_id, issue_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-            [date, cluster_id, issue_id],
-        )
         synced += 1
 
     return MaterializeResult(

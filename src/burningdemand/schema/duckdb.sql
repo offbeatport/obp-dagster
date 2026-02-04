@@ -73,12 +73,3 @@ CREATE TABLE IF NOT EXISTS gold.issue_evidence (
     PRIMARY KEY (cluster_date, cluster_id, url_hash)
 );
 
-CREATE TABLE IF NOT EXISTS gold.live_issues (
-    cluster_date DATE,
-    cluster_id   INTEGER,
-    issue_id     VARCHAR,
-    synced_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (cluster_date, cluster_id)
-);
-
-
