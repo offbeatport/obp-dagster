@@ -8,6 +8,7 @@ from dagster import (
     asset,
 )
 
+from burningdemand.config import EMBEDDINGS_ASSET_BATCH_SIZE
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.embedding_resource import EmbeddingResource
@@ -45,7 +46,7 @@ def embeddings(
         return MaterializeResult(metadata={"enriched": 0})
 
     total = 0
-    batch_size = 1000
+    batch_size = EMBEDDINGS_ASSET_BATCH_SIZE
     total_batches = (len(items) + batch_size - 1) // batch_size
 
     context.log.info(

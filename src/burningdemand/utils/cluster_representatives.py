@@ -1,9 +1,10 @@
 # burningdemand_dagster/utils/cluster_representatives.py
 """Utility functions for computing cluster representatives on-the-fly."""
-from pprint import pprint
 import pandas as pd
 import numpy as np
 from typing import List, Tuple
+
+from burningdemand.config import REPRESENTATIVES_DIVERSITY_THRESHOLD
 from burningdemand.utils.text_cleaning import clean_body
 
 
@@ -28,7 +29,7 @@ def select_representatives(
     items_df: pd.DataFrame,
     embeddings_array: np.ndarray,
     k: int = 5,
-    diversity_threshold: float = 0.8,
+    diversity_threshold: float = REPRESENTATIVES_DIVERSITY_THRESHOLD,
 ) -> pd.DataFrame:
     """
     Select top-k central items (medoid/closest-to-centroid) with diversity enforcement.

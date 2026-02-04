@@ -3,8 +3,8 @@ Helpers for the issues asset: cluster queries, LLM labeling, and DB writes.
 """
 
 import asyncio
+import json
 import logging
-import os
 from pprint import pprint
 from typing import Dict, List, Tuple
 
@@ -16,15 +16,17 @@ from litellm import acompletion
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.cluster_representatives import get_cluster_representatives
+from burningdemand.config import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MAX_TOKENS,
+    LLM_MODEL,
+    MAX_BODY_LENGTH_FOR_SNIPPET,
+    MAX_REPRESENTATIVES_FOR_LABELING,
+    MAX_SNIPPETS_FOR_LABELING,
+)
 from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
 from burningdemand.utils.prompts import build_label_prompt, build_system_prompt
-
-LLM_MODEL_DEFAULT = "ollama/gemma3:4b"
-
-# How much cluster context we send to the LLM per cluster (single place for titles + snippets caps)
-MAX_REPRESENTATIVES_FOR_LABELING = 10
-MAX_SNIPPETS_FOR_LABELING = 5
-MAX_BODY_LENGTH_FOR_SNIPPET = 500
 
 
 def clear_issues_data_for_date(db: DuckDBResource, date: str) -> None:
@@ -41,6 +43,7 @@ def get_clusters_for_date(db: DuckDBResource, date: str) -> pd.DataFrame:
         FROM silver.clusters sc
         WHERE sc.cluster_date = ?
         ORDER BY sc.authority_score DESC, sc.cluster_size DESC
+        LIMIT 1
         """,
         [date],
     )
@@ -115,25 +118,22 @@ async def label_cluster_with_llm(
 ) -> None:
     """Label one cluster via LLM. Model from env LLM_MODEL (default: ollama/gemma3:4b)."""
     async with sem:
-        print("start--------------------------------")
-        pprint(titles)
-        pprint(size)
-        pprint(snippets)
-        print(f"end--------------------------------")
+
         prompt = build_label_prompt(titles, size, snippets)
         label_data = None
         last_error = None
-        model = os.getenv("LLM_MODEL", LLM_MODEL_DEFAULT)
+        model = LLM_MODEL
 
         try:
             response = await acompletion(
                 model=model,
+                base_url=LLM_BASE_URL,
+                api_key=LLM_API_KEY,
                 messages=[
                     {"role": "system", "content": build_system_prompt()},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=2000,
-                response_format={"type": "json_object"},
+                max_tokens=LLM_MAX_TOKENS,
             )
             raw = response.choices[0].message.content
             data = extract_first_json_obj(raw)

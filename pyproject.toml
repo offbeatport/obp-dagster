@@ -16,6 +16,7 @@ dependencies = [
     "scikit-learn",
     "hdbscan",
     "pyrate-limiter",
+    "litellm[proxy]",
 ]
 name = "obp-dagster"
 requires-python = ">=3.10,<3.15"

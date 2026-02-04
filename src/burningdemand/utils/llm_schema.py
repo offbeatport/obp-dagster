@@ -19,7 +19,7 @@ CATEGORIES = (
 
 
 class IssueLabel(BaseModel):
-    canonical_title: str = Field(max_length=80)
+    canonical_title: str = Field()
     category: List[str] = Field(
         description="One or more of: " + ", ".join(CATEGORIES),
     )

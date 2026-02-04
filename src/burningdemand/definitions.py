@@ -1,21 +1,23 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 from dagster import Definitions, EnvVar
 
-# Load .env file from project root
+# Load .env file from project root (so config.py env defaults are overridable)
 env_path = Path(__file__).parent.parent.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path, override=True)
 
+from burningdemand.config import EMBEDDING_MODEL
+
 # Import assets directly
 from .assets import raw_items, embeddings, clusters, issues, live_issues
-
 from .resources.collectors.collectors_resource import CollectorsResource
 from .resources.collectors.github_collector import GitHubCollector
-from .resources.collectors.stackoverflow_collector import StackOverflowCollector
-from .resources.collectors.reddit_collector import RedditCollector
 from .resources.collectors.hackernews_collector import HackerNewsCollector
+from .resources.collectors.reddit_collector import RedditCollector
+from .resources.collectors.stackoverflow_collector import StackOverflowCollector
 from .resources.duckdb_resource import DuckDBResource
 from .resources.embedding_resource import EmbeddingResource
 from .resources.pocketbase_resource import PocketBaseResource
@@ -35,7 +37,7 @@ defs = Definitions(
     assets=all_assets,
     resources={
         "db": DuckDBResource(),
-        "embedding": EmbeddingResource(),
+        "embedding": EmbeddingResource(model_name=EMBEDDING_MODEL),
         "collector": CollectorsResource(
             github_collector=GitHubCollector(github_token=EnvVar("GITHUB_TOKEN")),
             stackoverflow_collector=StackOverflowCollector(
