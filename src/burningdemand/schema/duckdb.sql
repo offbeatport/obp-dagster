@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS gold.issues (
     cluster_id          INTEGER,
     canonical_title     VARCHAR,
     category            VARCHAR,
-    description         VARCHAR,
+    description         JSON,
     would_pay_signal    BOOLEAN,
     impact_level        VARCHAR,
     cluster_size        INTEGER,

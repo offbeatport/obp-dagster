@@ -32,7 +32,12 @@ Generate a JSON object with the following structure:
 {{
   "canonical_title": "A clear, compelling problem statement (max 120 chars)",
   "category": ["category1", "category2"],
-  "description": "2-4 paragraph description of the problem",
+  "description": {{
+    "problem": "What breaks or fails; blocked workflow; immediate pain point (1-2 short paragraphs)",
+    "current_solutions": "What people try now; why current tools/workarounds fail (1-2 paragraphs)",
+    "impact": "Who is affected; when it hurts; downstream consequences (1 short paragraph)",
+    "details": "Technical constraints, scale, integration if relevant (optional, can be empty string)"
+  }},
   "would_pay_signal": true/false,
   "impact_level": "low|medium|high"
 }}
@@ -54,34 +59,13 @@ Generate a JSON object with the following structure:
 - Choose categories that help builders and investors filter/discover this problem
 - Order by relevance (most relevant first)
 
-### description
-- **Critical**: This must give users enough context to understand and potentially work on the problem
-- Structure as 2-4 paragraphs:
-  
-  **Paragraph 1: The Problem**
-  - What specifically breaks or fails?
-  - What workflow is blocked?
-  - What's the immediate pain point?
-  
-  **Paragraph 2: Current State & Why Existing Solutions Fail**
-  - What do people try now?
-  - Why don't current tools/approaches work?
-  - What are the common workarounds and their limitations?
-  
-  **Paragraph 3: Impact & Context**
-  - Who experiences this? (team size, company stage, use cases)
-  - When does it hurt most?
-  - What are the downstream consequences?
-  
-  **Paragraph 4 (if needed): Technical Details**
-  - Any relevant technical constraints
-  - Scale considerations
-  - Integration requirements
+### description (JSON object with four keys)
+- **problem** (required): What specifically breaks or fails; what workflow is blocked; the immediate pain point. 1-2 short paragraphs. Give enough context for someone to understand the core issue.
+- **current_solutions** (required, can be ""): What do people try now? Why don't current tools/approaches work? Common workarounds and their limitations.
+- **impact** (required, can be ""): Who experiences this (team size, company stage, use cases)? When does it hurt most? Downstream consequences.
+- **details** (optional, can be ""): Technical constraints, scale considerations, integration requirements. Omit or use "" if not relevant.
 
-- Write for busy engineers and PMs who need to quickly assess if this is worth their time
-- Avoid jargon unless it's standard terminology for the target audience
-- Include concrete examples or scenarios
-- Don't mention specific tools unless explaining why they fail
+- Write for busy engineers and PMs. Be concrete. Avoid jargon unless standard. Don't mention specific tools unless explaining why they fail.
 
 ### would_pay_signal
 - Set to `true` if evidence suggests:
@@ -112,8 +96,8 @@ Generate a JSON object with the following structure:
 # QUALITY CHECKS
 Before outputting, verify:
 - [ ] Title is under 120 chars and describes a problem, not a solution
-- [ ] Description has enough detail for someone to start building a solution
-- [ ] Description explains why current approaches fail
+- [ ] description.problem has enough detail for someone to start building a solution
+- [ ] description.current_solutions explains why current approaches fail
 - [ ] Impact level matches the severity described
 - [ ] Categories are specific and relevant
 - [ ] would_pay_signal aligns with business impact
@@ -128,7 +112,12 @@ OUTPUT:
 {{
   "canonical_title": "No reliable way to test webhook integrations locally before deploying to production",
   "category": ["devtools", "payments"],
-  "description": "Developers building applications with webhook-based integrations (payment processors, authentication providers, event platforms) cannot reliably test webhook handling in local development environments. Webhooks require publicly accessible URLs, forcing developers to deploy to staging/production or use tunneling services just to verify basic functionality.\\n\\nCurrent approaches all have critical limitations: ngrok and similar tunneling tools require manual setup, break frequently, and create inconsistent URLs that must be reconfigured; deploying to staging for every change slows iteration to a crawl and risks breaking production; mocking webhook payloads misses signature validation, timing issues, and retry behavior. Teams waste hours debugging webhook issues that only surface in production.\\n\\nThis problem affects any team integrating with third-party services via webhooks—from early-stage startups building MVPs to enterprise teams managing complex event-driven architectures. The pain intensifies during rapid development cycles and becomes critical when webhook failures cause payment processing errors, missed notifications, or data sync issues. Development velocity drops significantly, and production incidents increase.",
+  "description": {{
+    "problem": "Developers building applications with webhook-based integrations (payment processors, auth providers, event platforms) cannot reliably test webhook handling in local development. Webhooks require publicly accessible URLs, forcing deploy-to-staging or tunneling just to verify basic functionality.",
+    "current_solutions": "ngrok and similar tools require manual setup, break frequently, and create inconsistent URLs. Deploying to staging for every change slows iteration and risks production. Mocking payloads misses signature validation, timing, and retry behavior.",
+    "impact": "Any team integrating third-party services via webhooks—from startups to enterprise. Pain intensifies during rapid dev cycles; becomes critical when webhook failures cause payment errors, missed notifications, or data sync issues.",
+    "details": "Signature validation and retry semantics differ by provider; localhost exposure and TLS in dev add complexity."
+  }},
   "would_pay_signal": true,
   "impact_level": "high"
 }}
@@ -156,7 +145,12 @@ Return ONLY valid JSON:
 {
   "canonical_title": "Problem statement under 120 characters",
   "category": ["1-3 categories"],
-  "description": "2-4 paragraph explanation",
+  "description": {
+    "problem": "What breaks; blocked workflow; pain point (1-2 paragraphs)",
+    "current_solutions": "What people try; why it fails (can be \"\")",
+    "impact": "Who is affected; consequences (can be \"\")",
+    "details": "Technical/scale/integration if relevant (can be \"\")"
+  },
   "would_pay_signal": true/false,
   "impact_level": "low|medium|high"
 }
@@ -176,12 +170,11 @@ canonical_title:
 category:
 - 1-3 categories ordered by relevance
 
-description:
-Write 2-4 short paragraphs covering:
-1. The core problem and blocked workflow
-2. Why current solutions/workarounds fail
-3. Who is affected and business/engineering impact
-4. Optional technical constraints if relevant
+description (object with four string keys):
+- problem: core problem and blocked workflow (required)
+- current_solutions: why current solutions/workarounds fail (can be "")
+- impact: who is affected and business/engineering impact (can be "")
+- details: optional technical constraints (can be "")
 
 Write for engineers, product builders, and investors. Be concrete and practical. Avoid unnecessary jargon.
 

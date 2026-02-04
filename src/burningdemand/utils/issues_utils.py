@@ -139,10 +139,16 @@ async def label_cluster_with_llm(
             data = extract_first_json_obj(raw)
             pprint(data)
             label = IssueLabel.model_validate(data)
+            desc = label.description
+            description_str = (
+                json.dumps(desc.model_dump())
+                if hasattr(desc, "model_dump")
+                else json.dumps(desc)
+            )
             label_data = {
                 "canonical_title": label.canonical_title,
                 "category": ",".join(label.category) if label.category else "other",
-                "description": label.description,
+                "description": description_str,
                 "would_pay_signal": bool(label.would_pay_signal),
                 "impact_level": label.impact_level,
             }

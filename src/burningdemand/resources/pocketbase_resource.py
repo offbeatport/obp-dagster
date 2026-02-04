@@ -20,7 +20,15 @@ class PocketBaseResource(ConfigurableResource):
         """Initialize PocketBase connection and authenticate."""
         self._base_url = self.base_url.rstrip("/")
         self._token: Optional[str] = None
+        self._user_id: Optional[str] = None
         self._login()
+
+    @property
+    def user_id(self) -> str:
+        """Authenticated user's record id (for reporter, etc.). Available after setup_for_execution."""
+        if self._user_id is None:
+            raise RuntimeError("PocketBase not authenticated yet (user_id unavailable).")
+        return self._user_id
 
     def _headers(self) -> Dict[str, str]:
         """Get HTTP headers with authentication token."""
@@ -44,6 +52,11 @@ class PocketBaseResource(ConfigurableResource):
         if not token:
             raise RuntimeError("PocketBase auth succeeded but no token returned.")
         self._token = token
+        record = data.get("record") or {}
+        user_id = record.get("id")
+        if not user_id:
+            raise RuntimeError("PocketBase auth succeeded but no record.id returned.")
+        self._user_id = user_id
 
     def _ensure_auth(self) -> None:
         """Ensure we have a valid authentication token."""

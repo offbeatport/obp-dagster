@@ -73,7 +73,7 @@ async def live_issues(
         cluster_id = int(issue["cluster_id"])
         issue_title = str(issue["canonical_title"])
         issue_desc = str(issue["description"])
-        issue_cat = str(issue["category"]).split(",").tolist()
+        issue_cat = str(issue["category"]).split(",")
 
         date_escaped = str(date).replace('"', '\\"')
         filter_expr = f'origin="collected" && cluster_date="{date_escaped}" && cluster_id={cluster_id}'
@@ -96,6 +96,7 @@ async def live_issues(
                     "category": issue_cat,
                     "status": "open",
                     "origin": "collected",
+                    "reporter": pb.user_id,
                     "cluster_date": date,
                     "cluster_id": cluster_id,
                 }
