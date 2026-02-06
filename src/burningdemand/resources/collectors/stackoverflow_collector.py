@@ -10,12 +10,8 @@ from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
+from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
-from .queries import (
-    get_body_max_length,
-    get_query_tags,
-    matches_query_keywords,
-)
 
 
 RATE_LIMITER = create_sqlite_limiter(
@@ -50,7 +46,7 @@ class StackOverflowCollector(ConfigurableResource):
     async def collect(self, date: str) -> Tuple[List[Dict], Dict]:
         """Collect StackOverflow questions for the given date."""
         from_ts, to_ts = iso_date_to_utc_bounds(date)
-        tags = get_query_tags("stackoverflow")
+        tags = config.build_stackoverflow_tags()
         key = self.stackexchange_key
 
         self._context.log.info("StackOverflow: 10 pages")
@@ -89,13 +85,15 @@ class StackOverflowCollector(ConfigurableResource):
             for it in page_items:
                 title = it.get("title") or ""
                 body = it.get("body_markdown") or it.get("body") or ""
-                if matches_query_keywords(f"{title} {body}", "stackoverflow"):
+                if config.matches_keywords(f"{title} {body}", "stackoverflow"):
                     created = it.get("creation_date")
                     items.append(
                         {
                             "url": it.get("link") or "",
                             "title": title,
-                            "body": body[: get_body_max_length()],
+                            "body": body[
+                                : config.labeling.max_body_length_for_snippet
+                            ],
                             "created_at": (
                                 datetime.fromtimestamp(
                                     int(created), tz=timezone.utc
@@ -103,8 +101,11 @@ class StackOverflowCollector(ConfigurableResource):
                                 if created
                                 else ""
                             ),
+                            "source_post_id": str(it.get("question_id") or ""),
                             "comment_count": it.get("answer_count", 0) or 0,
                             "vote_count": it.get("score", 0) or 0,
+                            "post_type": "question",
+                            "reaction_count": 0,
                         }
                     )
 

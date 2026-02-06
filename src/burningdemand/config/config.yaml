@@ -1,3 +1,16 @@
+collectors:
+  github:
+    # Number of results per page when calling GitHub's search API
+    per_page: 100
+    # How many pages to fetch per query
+    max_pages: 10
+    # Split each day into N time-window queries (GitHub search caps at 1000 results per query)
+    queries_per_day: 4
+    # Minimum number of reactions an issue must have to be included in the search query
+    min_reactions: 0
+    # Minimum number of comments an issue must have to be included in the search query
+    min_comments: 0
+
 llm:
   # Default LLM model for cluster labeling (can be overridden with LLM_MODEL env var)
   model: "gpt-5-mini"
@@ -39,4 +52,3 @@ clustering:
 representatives:
   # Jaccard similarity threshold for title diversity
   diversity_threshold: 0.8
-

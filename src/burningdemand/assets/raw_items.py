@@ -45,22 +45,27 @@ async def raw_items(
     df["url"] = df["url"].astype("object")
     df["url_hash"] = df["url_hash"].astype("object")
     df["source"] = df["source"].astype("object")
+    df["source_post_id"] = df.get("source_post_id", "").fillna("").astype("object")
     df["org_name"] = df["org_name"].fillna("").astype("object")
     df["product_name"] = df["product_name"].fillna("").astype("object")
+    df["post_type"] = df.get("post_type", "issue").fillna("issue").astype("object")
     df["collection_date"] = pd.to_datetime(
         df["collection_date"], format="%Y-%m-%d", errors="coerce"
     ).dt.date
     df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
     df["comment_count"] = df["comment_count"].fillna(0).astype(int)
     df["vote_count"] = df["vote_count"].fillna(0).astype(int)
+    df["reaction_count"] = df.get("reaction_count", 0).fillna(0).astype(int)
 
     inserted_attempt = db.upsert_df(
         "bronze",
         "raw_items",
         df,
         [
-            "url_hash",
             "source",
+            "source_post_id",
+            "post_type",
+            "url_hash",
             "collection_date",
             "url",
             "title",
@@ -70,6 +75,7 @@ async def raw_items(
             "vote_count",
             "org_name",
             "product_name",
+            "reaction_count",
         ],
     )
 

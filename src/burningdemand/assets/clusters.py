@@ -86,13 +86,17 @@ def compute_cluster_metrics(
         distances = np.linalg.norm(cluster_points - centroid, axis=1)
         mean_distance = float(np.mean(distances))
         vote_sum = int(cluster_data["vote_count"].sum())
+        reaction_sum = int(cluster_data.get("reaction_count", 0).sum())
         comment_sum = int(cluster_data["comment_count"].sum())
-        authority_score = vote_sum + comment_sum * 0.5
+        # Combine votes and reactions with a simple weighting:
+        #   authority_score = votes + 0.5 * comments + 0.5 * reactions
+        authority_score = vote_sum + comment_sum * 0.5 + reaction_sum * 0.5
         cluster_metrics[int(cid)] = {
             "size": int(np.sum(cluster_mask)),
             "mean_distance": mean_distance,
             "authority_score": float(authority_score),
             "vote_sum": vote_sum,
+            "reaction_sum": reaction_sum,
             "comment_sum": comment_sum,
         }
     return cluster_metrics, noise_count, outlier_ratio

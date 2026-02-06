@@ -54,11 +54,12 @@ all:
     - "any recommendations"
     - "recommend a tool"
     - "what tool do you use"
-    - "alternatives to"
     - "alternative to"
     - "replacement for"
-    - "switching from"
-    - "migrating from"
+    # - "switching from"
+    # - "migrating from"
+    - "switching"
+    - "migrating"
     - "best tool for"
     - "best software for"
     - "is there a tool"
@@ -77,7 +78,7 @@ all:
     - "enterprise plan"
     - "free tier"
     - "trial"
-    - "paid version"
+    - "paid"
 
     # ---- Pain / friction ----
     - "too slow"
@@ -122,4 +123,3 @@ all:
     - "internal tool"
     - "ops"
     - "devops"
-

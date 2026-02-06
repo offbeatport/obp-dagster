@@ -26,20 +26,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _set_if_env(data: dict[str, Any], env_name: str, *path: str) -> None:
-    value = os.getenv(env_name)
-    if value in (None, ""):
-        return
-
-    cur: dict[str, Any] = data
-    for key in path[:-1]:
-        nxt = cur.setdefault(key, {})
-        if not isinstance(nxt, dict):
-            raise ValueError(f"Expected mapping at {'.'.join(path[:-1])}")
-        cur = nxt
-    cur[path[-1]] = value
-
-
 class LlmConfig(BaseModel):
     model: str
     base_url: str
@@ -77,6 +63,18 @@ class RepresentativesConfig(BaseModel):
     diversity_threshold: float
 
 
+class GitHubCollectorConfig(BaseModel):
+    per_page: int
+    max_pages: int
+    queries_per_day: int = 12
+    min_reactions: int
+    min_comments: int
+
+
+class CollectorsConfig(BaseModel):
+    github: GitHubCollectorConfig
+
+
 class Config(BaseModel):
     # Forbid unknown keys in scalar config; safer during refactors.
     model_config = ConfigDict(extra="forbid")
@@ -87,6 +85,7 @@ class Config(BaseModel):
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
     representatives: RepresentativesConfig
+    collectors: CollectorsConfig
     keywords: dict[str, Any]
     prompts: dict[str, Any]
 

@@ -5,8 +5,10 @@ CREATE SCHEMA IF NOT EXISTS gold;
 
 -- 2. BRONZE LAYER
 CREATE TABLE IF NOT EXISTS bronze.raw_items (
-    url_hash        VARCHAR PRIMARY KEY,
+    url_hash        VARCHAR,
     source          VARCHAR,
+    source_post_id  VARCHAR,
+    post_type       VARCHAR,
     collection_date DATE,
     url             VARCHAR,
     title           VARCHAR,
@@ -16,7 +18,9 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
     vote_count      INTEGER,
     org_name        VARCHAR,
     product_name    VARCHAR,
+    reaction_count  INTEGER,
     collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (source, post_type, source_post_id)
 );
 
 

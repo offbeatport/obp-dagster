@@ -10,8 +10,8 @@ from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
+from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
-from .queries import get_body_max_length, matches_query_keywords
 
 
 # 100 requests per minute (shared across collect() calls)
@@ -74,14 +74,16 @@ class HackerNewsCollector(ConfigurableResource):
             for it in hits:
                 title = it.get("title") or ""
                 body = it.get("story_text") or ""
-                if matches_query_keywords(f"{title} {body}", "hackernews"):
+                if config.matches_keywords(f"{title} {body}", "hackernews"):
                     created_i = int(it.get("created_at_i") or 0)
                     items.append(
                         {
                             "url": it.get("url")
                             or f"https://news.ycombinator.com/item?id={it.get('objectID')}",
                             "title": title,
-                            "body": body[: get_body_max_length()],
+                            "body": body[
+                                : config.labeling.max_body_length_for_snippet
+                            ],
                             "created_at": (
                                 datetime.fromtimestamp(
                                     created_i, tz=timezone.utc
@@ -89,8 +91,11 @@ class HackerNewsCollector(ConfigurableResource):
                                 if created_i
                                 else ""
                             ),
+                            "source_post_id": str(it.get("objectID") or ""),
                             "comment_count": it.get("num_comments", 0) or 0,
                             "vote_count": it.get("points", 0) or 0,
+                            "post_type": "story",
+                            "reaction_count": 0,
                         }
                     )
 

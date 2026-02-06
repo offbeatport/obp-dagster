@@ -7,18 +7,11 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from dagster import ConfigurableResource
 from pyrate_limiter import Duration
-from pyrate_limiter.limiter_factory import (
-    create_inmemory_limiter,
-    create_sqlite_limiter,
-)
+from pyrate_limiter.limiter_factory import create_inmemory_limiter, create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
+from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
-from .queries import (
-    get_body_max_length,
-    get_query_subreddits,
-    matches_query_keywords,
-)
 
 
 RATE_LIMITER = create_sqlite_limiter(
@@ -57,7 +50,7 @@ class RedditCollector(ConfigurableResource):
         client_id = self.reddit_client_id
         client_secret = self.reddit_client_secret
         user_agent = "BurningDemand/0.1"
-        subreddits = get_query_subreddits()
+        subreddits = config.get_reddit_subreddits()
 
         token = None
         req_count = 0
@@ -119,17 +112,22 @@ class RedditCollector(ConfigurableResource):
                 if from_ts <= created < to_ts:
                     title = d.get("title") or ""
                     body = d.get("selftext") or ""
-                    if matches_query_keywords(f"{title} {body}", "reddit"):
+                    if config.matches_keywords(f"{title} {body}", "reddit"):
                         items.append(
                             {
                                 "url": f"https://reddit.com{d.get('permalink','')}",
                                 "title": title,
-                                "body": body[: get_body_max_length()],
+                                "body": body[
+                                    : config.labeling.max_body_length_for_snippet
+                                ],
                                 "created_at": datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
+                                "source_post_id": str(d.get("id") or ""),
                                 "comment_count": d.get("num_comments", 0) or 0,
                                 "vote_count": d.get("score", 0) or 0,
+                                "post_type": "post",
+                                "reaction_count": 0,
                             }
                         )
 
