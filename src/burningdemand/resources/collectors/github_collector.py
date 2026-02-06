@@ -51,7 +51,6 @@ class GitHubCollector(ConfigurableResource):
             raise RuntimeError("GitHubCollector client is not initialized")
 
         specs = self._generate_specs(date)
-        pprint.pprint(specs)
         responses = await batch_requests(
             self._client,
             self._context,
@@ -59,36 +58,27 @@ class GitHubCollector(ConfigurableResource):
             limiter=RATE_LIMITER,
         )
 
-        seen = set()
         items = []
 
         for resp in responses:
+            pprint.pprint(resp.json().get("total_count"))
             for it in resp.json().get("items", []):
                 url = it.get("html_url")
-                if not url or url in seen:
-                    continue
-                title = it.get("title") or ""
-                body = it.get("body") or ""
-                if config.matches_keywords(f"{title} {body}", "github"):
-                    seen.add(url)
-                    items.append(
-                        {
-                            "url": url,
-                            "title": title,
-                            "body": body[: config.labeling.max_body_length_for_snippet],
-                            "created_at": it.get("created_at") or "",
-                            "source_post_id": str(it.get("id") or ""),
-                            "comment_count": it.get("comments", 0) or 0,
-                            "vote_count": 0,
-                            "post_type": "issue",
-                            "reaction_count": it.get("reactions", {}).get(
-                                "total_count", 0
-                            )
-                            or 0,
-                            "org_name": url.split("/")[3],
-                            "product_name": url.split("/")[4],
-                        }
-                    )
+                items.append(
+                    {
+                        "url": url,
+                        "title": it.get("title"),
+                        "body": it.get("body"),
+                        "created_at": it.get("created_at"),
+                        "source_post_id": str(it.get("id")),
+                        "comment_count": it.get("comments", 0),
+                        "vote_count": 0,
+                        "post_type": "issue",
+                        "reaction_count": it.get("reactions", {}).get("total_count", 0),
+                        "org_name": url.split("/")[3],
+                        "product_name": url.split("/")[4],
+                    }
+                )
 
         log = getattr(getattr(self, "_context", None), "log", None)
         if log is not None:

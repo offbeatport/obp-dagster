@@ -5,7 +5,7 @@ collectors:
     # How many pages to fetch per query
     max_pages: 10
     # Split each day into N time-window queries (GitHub search caps at 1000 results per query)
-    queries_per_day: 4
+    queries_per_day: 3
     # Minimum number of reactions an issue must have to be included in the search query
     min_reactions: 0
     # Minimum number of comments an issue must have to be included in the search query

@@ -85,7 +85,7 @@ def prepare_clusters(
             embeddings_array,
             max_representatives_count=config.labeling.max_representatives_for_labeling,
             max_snippets_count=config.labeling.max_snippets_for_labeling,
-            max_body_length=config.labeling.max_body_length_for_snippet,
+            max_body_length=config.labeling.max_body_weight,
         )
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
