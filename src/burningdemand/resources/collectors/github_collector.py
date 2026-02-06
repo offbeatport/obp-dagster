@@ -81,8 +81,6 @@ class GitHubCollector(ConfigurableResource):
             specs,
             limiter=RATE_LIMITER,
         )
-        self._context.log.info(f"step222")
-        self._context.log.info(f"responses: {responses}")
         seen = set()
         items = []
         for resp in responses:

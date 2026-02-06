@@ -2,9 +2,9 @@
 """Utility functions for computing cluster representatives on-the-fly."""
 import pandas as pd
 import numpy as np
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-from burningdemand.config import REPRESENTATIVES_DIVERSITY_THRESHOLD
+from burningdemand.utils.config import config
 from burningdemand.utils.text_cleaning import clean_body
 
 
@@ -29,7 +29,7 @@ def select_representatives(
     items_df: pd.DataFrame,
     embeddings_array: np.ndarray,
     k: int = 5,
-    diversity_threshold: float = REPRESENTATIVES_DIVERSITY_THRESHOLD,
+    diversity_threshold: Optional[float] = None,
 ) -> pd.DataFrame:
     """
     Select top-k central items (medoid/closest-to-centroid) with diversity enforcement.
@@ -45,6 +45,9 @@ def select_representatives(
     """
     if len(items_df) == 0 or len(embeddings_array) == 0:
         return pd.DataFrame()
+
+    if diversity_threshold is None:
+        diversity_threshold = config.representatives.diversity_threshold
 
     # Compute centroid
     centroid = np.mean(embeddings_array, axis=0)

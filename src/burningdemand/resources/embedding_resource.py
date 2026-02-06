@@ -5,18 +5,22 @@ import numpy as np
 from dagster import ConfigurableResource
 from pydantic import Field
 
-from burningdemand.config import EMBEDDING_ENCODE_BATCH_SIZE, EMBEDDING_MODEL
+from burningdemand.utils.config import config
 
 
 class EmbeddingResource(ConfigurableResource):
-    model_name: str = Field(default=EMBEDDING_MODEL)
+    model_name: str = Field(default="")
 
     def setup_for_execution(self, context) -> None:
         from sentence_transformers import SentenceTransformer
 
-        self._model = SentenceTransformer(self.model_name)
+        self._model = SentenceTransformer(
+            self.model_name or config.embeddings.model
+        )
 
     def encode(self, texts: List[str]) -> np.ndarray:
         return self._model.encode(
-            texts, batch_size=EMBEDDING_ENCODE_BATCH_SIZE, show_progress_bar=False
+            texts,
+            batch_size=config.embeddings.encode_batch_size,
+            show_progress_bar=False,
         )

@@ -8,7 +8,7 @@ from dagster import (
     MetadataValue,
     asset,
 )
-from burningdemand.config import LLM_CONCURRENCY_PER_ISSUES_PARTITION
+from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.issues_utils import (
@@ -43,7 +43,7 @@ async def issues(
     results: List[dict] = []
     failed: List[dict] = []
     errors: List[str] = []
-    sem = asyncio.Semaphore(LLM_CONCURRENCY_PER_ISSUES_PARTITION)
+    sem = asyncio.Semaphore(config.issues.llm_concurrency_per_issues_partition)
 
     await asyncio.gather(
         *[

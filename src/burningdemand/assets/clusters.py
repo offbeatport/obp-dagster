@@ -11,15 +11,7 @@ from dagster import (
     MaterializeResult,
     asset,
 )
-from burningdemand.config import (
-    CLUSTERING_MIN_CLUSTER_SIZE_DIVISOR,
-    CLUSTERING_MIN_CLUSTER_SIZE_FLOOR,
-    CLUSTERING_MIN_SAMPLES_DIVISOR,
-    CLUSTERING_MIN_SAMPLES_FLOOR,
-    CLUSTERING_METRIC,
-    CLUSTERING_ROLLING_WINDOW_DAYS,
-    CLUSTERING_SELECTION_METHOD,
-)
+from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 
@@ -58,18 +50,18 @@ def run_hdbscan(embeddings_array: np.ndarray) -> np.ndarray:
     """Run HDBSCAN and return cluster labels (-1 = noise)."""
     n = len(embeddings_array)
     min_cluster_size = max(
-        CLUSTERING_MIN_CLUSTER_SIZE_FLOOR,
-        n // CLUSTERING_MIN_CLUSTER_SIZE_DIVISOR,
+        config.clustering.min_cluster_size_floor,
+        n // config.clustering.min_cluster_size_divisor,
     )
     min_samples = max(
-        CLUSTERING_MIN_SAMPLES_FLOOR,
-        min_cluster_size // CLUSTERING_MIN_SAMPLES_DIVISOR,
+        config.clustering.min_samples_floor,
+        min_cluster_size // config.clustering.min_samples_divisor,
     )
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=min_cluster_size,
         min_samples=min_samples,
-        metric=CLUSTERING_METRIC,
-        cluster_selection_method=CLUSTERING_SELECTION_METHOD,
+        metric=config.clustering.metric,
+        cluster_selection_method=config.clustering.selection_method,
     )
     return clusterer.fit_predict(embeddings_array)
 
@@ -171,12 +163,12 @@ def clusters(
     date = context.partition_key
     date_obj = datetime.strptime(date, "%Y-%m-%d")
     window_days = (
-        CLUSTERING_ROLLING_WINDOW_DAYS - 1
+        config.clustering.rolling_window_days - 1
     )  # e.g. 7 days = 6 days before + partition day
     window_start = (date_obj - timedelta(days=window_days)).strftime("%Y-%m-%d")
 
     context.log.info(
-        f"Clustering rolling window: {window_start} to {date} ({CLUSTERING_ROLLING_WINDOW_DAYS} days)"
+        f"Clustering rolling window: {window_start} to {date} ({config.clustering.rolling_window_days} days)"
     )
 
     clear_cluster_data_for_date(db, date)

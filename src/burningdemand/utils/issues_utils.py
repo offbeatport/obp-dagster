@@ -15,17 +15,8 @@ from litellm import acompletion
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.cluster_representatives import get_cluster_representatives
-from burningdemand.config import (
-    LLM_API_KEY,
-    LLM_BASE_URL,
-    LLM_MAX_TOKENS,
-    LLM_MODEL,
-    MAX_BODY_LENGTH_FOR_SNIPPET,
-    MAX_REPRESENTATIVES_FOR_LABELING,
-    MAX_SNIPPETS_FOR_LABELING,
-)
+from burningdemand.utils.config import config
 from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
-from burningdemand.utils.prompts import build_label_prompt, build_system_prompt
 
 
 def clear_issues_data_for_date(db: DuckDBResource, date: str) -> None:
@@ -42,7 +33,6 @@ def get_clusters_for_date(db: DuckDBResource, date: str) -> pd.DataFrame:
         FROM silver.clusters sc
         WHERE sc.cluster_date = ?
         ORDER BY sc.authority_score DESC, sc.cluster_size DESC
-        LIMIT 1
         """,
         [date],
     )
@@ -93,9 +83,9 @@ def prepare_clusters(
         titles, snippets = get_cluster_representatives(
             cluster_items,
             embeddings_array,
-            max_representatives_count=MAX_REPRESENTATIVES_FOR_LABELING,
-            max_snippets_count=MAX_SNIPPETS_FOR_LABELING,
-            max_body_length=MAX_BODY_LENGTH_FOR_SNIPPET,
+            max_representatives_count=config.labeling.max_representatives_for_labeling,
+            max_snippets_count=config.labeling.max_snippets_for_labeling,
+            max_body_length=config.labeling.max_body_length_for_snippet,
         )
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
@@ -115,24 +105,24 @@ async def label_cluster_with_llm(
     failed: List[dict],
     errors: List[str],
 ) -> None:
-    """Label one cluster via LLM. Model from env LLM_MODEL (default: ollama/gemma3:4b)."""
+    """Label one cluster via LLM. Model from config / env LLM_MODEL."""
     async with sem:
 
-        prompt = build_label_prompt(titles, size, snippets)
+        prompt = config.build_label_prompt(titles, size, snippets)
         label_data = None
         last_error = None
-        model = LLM_MODEL
+        model = config.llm.model
 
         try:
             response = await acompletion(
                 model=model,
-                base_url=LLM_BASE_URL,
-                api_key=LLM_API_KEY,
+                base_url=config.llm.base_url,
+                api_key=config.llm.api_key,
                 messages=[
-                    {"role": "system", "content": build_system_prompt()},
+                    {"role": "system", "content": config.build_system_prompt()},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=LLM_MAX_TOKENS,
+                max_tokens=config.llm.max_tokens,
             )
             raw = response.choices[0].message.content
             data = extract_first_json_obj(raw)

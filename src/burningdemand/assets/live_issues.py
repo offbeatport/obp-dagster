@@ -1,6 +1,5 @@
 # burningdemand_dagster/assets/live_issues.py
 import asyncio
-import json
 from dagster import (
     AssetExecutionContext,
     MaterializeResult,
@@ -56,16 +55,11 @@ async def live_issues(
 
         cluster_id = int(issue["cluster_id"])
         issue_title = str(issue["canonical_title"])
-        issue_desc = json.dumps(
-            {
-                "problem": str(issue.get("desc_problem", "") or ""),
-                "current_solutions": str(issue.get("desc_current_solutions", "") or ""),
-                "impact": str(issue.get("desc_impact", "") or ""),
-                "details": str(issue.get("desc_details", "") or ""),
-            }
-        )
         issue_cat = str(issue["category"]).split(",")
-
+        desc_problem = str(issue.get("desc_problem", "") or "")
+        desc_current_solutions = str(issue.get("desc_current_solutions", "") or "")
+        desc_impact = str(issue.get("desc_impact", "") or "")
+        desc_details = str(issue.get("desc_details", "") or "")
         date_escaped = str(date).replace('"', '\\"')
         filter_expr = f'origin="collected" && cluster_date="{date_escaped} 00:00:00.000Z" && cluster_id={cluster_id}'
         existing_issue = await loop.run_in_executor(
@@ -81,7 +75,10 @@ async def live_issues(
             try:
                 issue_payload = {
                     "title": issue_title,
-                    "description": issue_desc,
+                    "desc_problem": desc_problem,
+                    "desc_current_solutions": desc_current_solutions,
+                    "desc_impact": desc_impact,
+                    "desc_details": desc_details,
                     "category": issue_cat,
                     "status": "open",
                     "origin": "collected",

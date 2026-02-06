@@ -1,0 +1,42 @@
+llm:
+  # Default LLM model for cluster labeling (can be overridden with LLM_MODEL env var)
+  model: "gpt-5-mini"
+  # Base URL for the LLM API (override with LLM_BASE_URL)
+  base_url: "https://llm.offbeatport.com"
+  # Maximum tokens for responses
+  max_tokens: 2000
+
+labeling:
+  # How much cluster content we send to the LLM
+  max_representatives_for_labeling: 10
+  max_snippets_for_labeling: 5
+  max_body_length_for_snippet: 500
+
+issues:
+  # Concurrent LLM calls per issues partition
+  llm_concurrency_per_issues_partition: 8
+
+embeddings:
+  # Default embedding model (override with EMBEDDING_MODEL env var)
+  model: "all-MiniLM-L6-v2"
+  # Batch size when calling the embedding model (SentenceTransformer.encode)
+  encode_batch_size: 256
+  # Batch size for splitting items in the embeddings asset
+  asset_batch_size: 1000
+
+clustering:
+  # Number of days of embeddings to include when clustering (window_end = partition date)
+  rolling_window_days: 7
+  # min_cluster_size = max(min_cluster_size_floor, n // min_cluster_size_divisor)
+  min_cluster_size_floor: 5
+  min_cluster_size_divisor: 200
+  # min_samples = max(min_samples_floor, min_cluster_size // min_samples_divisor)
+  min_samples_floor: 3
+  min_samples_divisor: 2
+  metric: "euclidean"
+  selection_method: "eom"
+
+representatives:
+  # Jaccard similarity threshold for title diversity
+  diversity_threshold: 0.8
+
