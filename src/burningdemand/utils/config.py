@@ -64,8 +64,6 @@ class RepresentativesConfig(BaseModel):
 
 
 class GitHubCollectorConfig(BaseModel):
-    per_page: int
-    max_pages: int
     queries_per_day: int
     min_reactions: int
     min_comments: int
@@ -116,11 +114,6 @@ class Config(BaseModel):
     def get_source_tags(self, source: str) -> list[str]:
         tags = self._source_section(source).get("tags") or []
         return list(tags)
-
-    def build_github_query(self, date: str) -> str:
-        keywords = self.get_source_keywords("github")[:10]
-        keyword_query = " OR ".join(f'"{kw}"' for kw in keywords)
-        return f"is:issue created:{date} ({keyword_query})"
 
     def build_stackoverflow_tags(self) -> list[str]:
         return self.get_source_tags("stackoverflow")

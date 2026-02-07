@@ -27,12 +27,13 @@ async def raw_gh_issues(
         "reactions { totalCount } }"
     )
     query_suffix = (
-        f"is:issue comments:>{config.resources.github.min_comments} "
-        f"reactions:>{config.resources.github.min_reactions}"
+        f"is:issue comments:>={config.resources.github.min_comments} "
+        f"reactions:>={config.resources.github.min_reactions}"
     )
     raw_items, meta = await github.search(
         date,
         node_fragment,
+        type="ISSUE",
         query_suffix=query_suffix,
         hour_splits=config.resources.github.queries_per_day,
     )

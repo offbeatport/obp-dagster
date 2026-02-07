@@ -27,11 +27,16 @@ async def raw_gh_discussions(
         "reactions { totalCount } }"
     )
     query_suffix = (
-        f"is:discussion comments:>{config.resources.github.min_comments} "
-        f"reactions:>{config.resources.github.min_reactions}"
+        f"is:discussion"
+        # f"is:discussion comments:>{config.resources.github.min_comments} "
+        # f"reactions:>{config.resources.github.min_reactions}"
     )
     raw_items, meta = await github.search(
-        date, node_fragment, query_suffix=query_suffix
+        date,
+        node_fragment,
+        query_suffix=query_suffix,
+        type="DISCUSSION",
+        hour_splits=config.resources.github.queries_per_day,
     )
     max_body = config.labeling.max_body_length_for_snippet
     items = [

@@ -26,39 +26,13 @@ class GitHubResource(ConfigurableResource):
     def _log(self):
         return getattr(getattr(self, "_context", None), "log", None)
 
-    async def fetch(
-        self, path: str, day: str, query: str
-    ) -> Tuple[List[Dict[str, Any]], Dict]:
-        """REST search/issues: return raw API items."""
-
-        if not getattr(self, "_gh", None):
-            raise RuntimeError("GitHubResource client not initialized")
-        cfg = self._cfg
-        ranges = split_day_into_ranges(day, cfg.queries_per_day)
-        queries = [f"created:{s}..{e} {query}" for s, e in ranges]
-        if not queries:
-            return [], {"requests": 0, "ok": 0}
-        items: List[Dict[str, Any]] = []
-        ok = 0
-        for q in queries:
-            for p in range(1, cfg.max_pages + 1):
-                resp = await self._gh.arequest(
-                    "GET",
-                    f"/{path.lstrip('/')}",
-                    params={"q": q, "per_page": cfg.per_page, "page": p},
-                )
-                ok += 1
-                items.extend((resp.parsed_data or {}).get("items", []) or [])
-
-        self._log().info(f"GitHub REST: {len(items)} items")
-        return items, {"requests": len(queries) * cfg.max_pages, "ok": ok}
-
     async def search(
         self,
         day: str,
         node_fragment: str,
+        type: str = "ISSUE",
         query_suffix: str = "",
-        hour_splits: int = 24,
+        hour_splits: int = 2,
     ) -> Tuple[List[Dict[str, Any]], Dict]:
         """GraphQL search: return raw nodes with the provided fragment."""
 
@@ -69,7 +43,7 @@ class GitHubResource(ConfigurableResource):
         gql_query = f"""
         query GitHubSearch($queryStr: String!, $first: Int!, $after: String) {{
           rateLimit {{ limit remaining resetAt }}
-          search(query: $queryStr, type: ISSUE, first: $first, after: $after) {{
+          search(query: $queryStr, type: {type}, first: $first, after: $after) {{
             pageInfo {{ hasNextPage endCursor }}
             nodes {{
               __typename
