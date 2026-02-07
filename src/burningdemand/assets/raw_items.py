@@ -5,6 +5,8 @@ from typing import Any, Dict, List
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
+from burningdemand.resources.reddit_resource import RedditResource
+from burningdemand.resources.stackoverflow_resource import StackOverflowResource
 from burningdemand.schema.raw_items import CollectedItems, RawItem
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
@@ -103,7 +105,7 @@ async def raw_gh_discussions(
 async def raw_rd(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    reddit,
+    reddit: RedditResource,
 ) -> MaterializeResult:
     items, meta = await reddit.collect(context.partition_key)
     return await materialize_raw(db, items, meta, "rd", context.partition_key)
@@ -117,7 +119,7 @@ async def raw_rd(
 async def raw_so(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    stackoverflow,
+    stackoverflow: StackOverflowResource,
 ) -> MaterializeResult:
     items, meta = await stackoverflow.collect(context.partition_key)
     return await materialize_raw(db, items, meta, "so", context.partition_key)
