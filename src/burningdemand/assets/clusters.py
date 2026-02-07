@@ -32,7 +32,8 @@ def load_embeddings_in_window(
             e.url_hash,
             e.embedding,
             b.vote_count,
-            b.comment_count
+            b.reaction_count,
+            b.comment_count,
         FROM silver.embeddings e
         JOIN bronze.raw_items b ON e.url_hash = b.url_hash
         WHERE b.collection_date >= ?
@@ -86,7 +87,7 @@ def compute_cluster_metrics(
         distances = np.linalg.norm(cluster_points - centroid, axis=1)
         mean_distance = float(np.mean(distances))
         vote_sum = int(cluster_data["vote_count"].sum())
-        reaction_sum = int(cluster_data.get("reaction_count", 0).sum())
+        reaction_sum = int(cluster_data["reaction_count"].sum())
         comment_sum = int(cluster_data["comment_count"].sum())
         # Combine votes and reactions with a simple weighting:
         #   authority_score = votes + 0.5 * comments + 0.5 * reactions

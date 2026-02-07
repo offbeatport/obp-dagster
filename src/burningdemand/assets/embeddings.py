@@ -18,7 +18,7 @@ from dagster import Config
 @asset(
     partitions_def=daily_partitions,
     group_name="silver",
-    deps=["raw_items"],
+    deps=["raw_gh_issues", "raw_gh_discussions", "raw_rd", "raw_so", "raw_hn"],
     automation_condition=AutomationCondition.eager()
     .without(AutomationCondition.in_latest_time_window())
     .without(~AutomationCondition.any_deps_missing())

@@ -1,7 +1,6 @@
 """GitHub issues collector."""
 
 import asyncio
-import pprint
 from typing import Dict, List, Tuple
 
 import httpx
@@ -44,13 +43,18 @@ class GitHubCollector(ConfigurableResource):
                 pass
             self._client = None
 
-    async def collect(self, date: str) -> Tuple[List[Dict], Dict]:
-        """Collect GitHub issues for the given date."""
-
+    async def collect(
+        self, date: str, post_type: str = "issue"
+    ) -> Tuple[List[Dict], Dict]:
+        """Collect GitHub issues or discussions for the given date.
+        post_type: "issue" | "discussion" (discussion not yet implemented).
+        """
         if self._client is None:
             raise RuntimeError("GitHubCollector client is not initialized")
+        if post_type == "discussion":
+            return await self._collect_discussions(date)
 
-        specs = self._generate_specs(date)
+        specs = self._generate_specs(date, post_type="issue")
         responses = await batch_requests(
             self._client,
             self._context,
@@ -61,7 +65,6 @@ class GitHubCollector(ConfigurableResource):
         items = []
 
         for resp in responses:
-            pprint.pprint(resp.json().get("total_count"))
             for it in resp.json().get("items", []):
                 url = it.get("html_url")
                 items.append(
@@ -74,7 +77,8 @@ class GitHubCollector(ConfigurableResource):
                         "comment_count": it.get("comments", 0),
                         "vote_count": 0,
                         "post_type": "issue",
-                        "reaction_count": it.get("reactions", {}).get("total_count", 0),
+                        "reaction_count": it.get("reactions", {}).get("total_count", 0)
+                        or 0,
                         "org_name": url.split("/")[3],
                         "product_name": url.split("/")[4],
                     }
@@ -82,17 +86,25 @@ class GitHubCollector(ConfigurableResource):
 
         log = getattr(getattr(self, "_context", None), "log", None)
         if log is not None:
-            log.info(f"GitHub: {len(responses)} requests, {len(items)} items")
+            log.info(f"GitHub issues: {len(responses)} requests, {len(items)} items")
         return items, {"requests": len(responses)}
 
-    def _generate_specs(self, date: str) -> List[dict]:
+    async def _collect_discussions(self, date: str) -> Tuple[List[Dict], Dict]:
+        """Collect GitHub discussions. Stub: not yet implemented."""
+        log = getattr(getattr(self, "_context", None), "log", None)
+        if log is not None:
+            log.warning("GitHub discussions collector not yet implemented")
+        return [], {"requests": 0, "note": "discussions not implemented"}
+
+    def _generate_specs(self, date: str, post_type: str = "issue") -> List[dict]:
         queries = []
 
         ranges = split_day_into_ranges(date, self._cfg.queries_per_day)
-
+        # Only issues supported in search API today
+        q_prefix = "is:issue"
         for start_z, end_z in ranges:
             queries.append(
-                f"is:issue created:{start_z}..{end_z} comments:>{self._cfg.min_comments} reactions:>{self._cfg.min_reactions}"
+                f"{q_prefix} created:{start_z}..{end_z} comments:>{self._cfg.min_comments} reactions:>{self._cfg.min_reactions}"
             )
 
         specs = [

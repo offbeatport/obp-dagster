@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
 -- 3. SILVER LAYER
 CREATE TABLE IF NOT EXISTS silver.embeddings (
     url_hash        VARCHAR PRIMARY KEY,
-    embedding       FLOAT[384],
+    embedding       FLOAT[1024],
     embedding_date  DATE
 );
 

@@ -13,7 +13,11 @@ from burningdemand.utils.config import config
 
 # Import assets directly
 from .assets import (
-    raw_items,
+    raw_gh_issues,
+    raw_gh_discussions,
+    raw_rd,
+    raw_so,
+    raw_hn,
     embeddings,
     clusters,
     issues,
@@ -33,7 +37,11 @@ from .resources.pocketbase_resource import PocketBaseResource
 # Assets use AssetKey with prefixes (bronze, silver, gold) in their dependencies
 # Dagster will automatically handle the key prefixes based on the AssetKey references
 all_assets = [
-    raw_items,
+    raw_gh_issues,
+    raw_gh_discussions,
+    raw_rd,
+    raw_so,
+    raw_hn,
     embeddings,
     clusters,
     issues,

@@ -1,8 +1,0 @@
-#
-# NOTE: Configuration moved
-#
-# The collectors / keyword configuration now lives under:
-#   burningdemand/config/collectors.yaml
-#
-# This top-level file is kept only as a breadcrumb for developers.
-
