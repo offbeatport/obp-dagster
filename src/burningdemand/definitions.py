@@ -22,14 +22,13 @@ from .assets import (
     live_issues,
     live_evidence,
 )
-from .resources.collectors.collectors_resource import CollectorsResource
-from .resources.collectors.github_collector import GitHubCollector
-from .resources.collectors.hackernews_collector import HackerNewsCollector
-from .resources.collectors.reddit_collector import RedditCollector
-from .resources.collectors.stackoverflow_collector import StackOverflowCollector
 from .resources.duckdb_resource import DuckDBResource
 from .resources.embedding_resource import EmbeddingResource
+from .resources.github_resource import GitHubResource
+from .resources.hackernews_resource import HackerNewsResource
 from .resources.pocketbase_resource import PocketBaseResource
+from .resources.reddit_resource import RedditResource
+from .resources.stackoverflow_resource import StackOverflowResource
 
 # Combine all assets
 # Assets use AssetKey with prefixes (bronze, silver, gold) in their dependencies
@@ -52,17 +51,15 @@ defs = Definitions(
     resources={
         "db": DuckDBResource(),
         "embedding": EmbeddingResource(),
-        "collector": CollectorsResource(
-            github_collector=GitHubCollector(github_token=EnvVar("GITHUB_TOKEN")),
-            stackoverflow_collector=StackOverflowCollector(
-                stackexchange_key=os.getenv("STACKEXCHANGE_KEY"),
-            ),
-            reddit_collector=RedditCollector(
-                reddit_client_id=os.getenv("REDDIT_CLIENT_ID"),
-                reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-            ),
-            hackernews_collector=HackerNewsCollector(),
+        "github": GitHubResource(github_token=EnvVar("GITHUB_TOKEN")),
+        "reddit": RedditResource(
+            reddit_client_id=os.getenv("REDDIT_CLIENT_ID"),
+            reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
         ),
+        "stackoverflow": StackOverflowResource(
+            stackexchange_key=os.getenv("STACKEXCHANGE_KEY"),
+        ),
+        "hackernews": HackerNewsResource(),
         "pb": PocketBaseResource.from_env(),
     },
 )

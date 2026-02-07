@@ -1,4 +1,4 @@
-"""StackOverflow questions collector."""
+"""StackOverflow resource: collects questions for a given date."""
 
 import asyncio
 from datetime import datetime, timezone
@@ -9,9 +9,9 @@ from dagster import ConfigurableResource
 from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
-from burningdemand.utils.batch_requests import batch_requests
+from burningdemand.schema.raw_items import RawItem
+from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
-from burningdemand.resources.collectors.types import RawItem
 from burningdemand.utils.url import iso_date_to_utc_bounds
 
 
@@ -24,8 +24,8 @@ RATE_LIMITER = create_sqlite_limiter(
 )
 
 
-class StackOverflowCollector(ConfigurableResource):
-    """Collector for StackOverflow questions."""
+class StackOverflowResource(ConfigurableResource):
+    """Collects StackOverflow questions for the given date."""
 
     stackexchange_key: Optional[str] = None
 

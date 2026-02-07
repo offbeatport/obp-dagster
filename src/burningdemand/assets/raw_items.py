@@ -1,10 +1,14 @@
-"""Day-partitioned raw assets per source. All write into bronze.raw_items."""
+"""Day-partitioned raw assets (GitHub, Reddit, StackOverflow, Hacker News). All write into bronze.raw_items."""
+
+from typing import Any, Dict, List
 
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
-from burningdemand.resources.collectors.collectors_resource import CollectorsResource
+from burningdemand.schema.raw_items import CollectedItems, RawItem
 from burningdemand.resources.duckdb_resource import DuckDBResource
+from burningdemand.resources.github_resource import GitHubResource
+from burningdemand.utils.config import config
 
 
 UPSERT_COLUMNS = [
@@ -25,44 +29,34 @@ UPSERT_COLUMNS = [
 ]
 
 
-async def _materialize_raw(
+async def materialize_raw(
     db: DuckDBResource,
-    collector: CollectorsResource,
+    items: List[RawItem],
+    meta: Dict[str, Any],
     source: str,
     date: str,
 ) -> MaterializeResult:
-    """Collect for (source, date) and upsert into bronze.raw_items.
-    source: asset key like gh_issues, gh_discussions, rd, so, hn (used as bronze.raw_items.source).
-    """
-    collected = await collector.collect(source, date)
-
-    if not collected.items:
+    """Upsert collected items into bronze.raw_items. Returns empty result if no items."""
+    if not items:
         return MaterializeResult(
             metadata={
                 "source": source,
                 "date": date,
                 "collected": 0,
                 "insert_attempted": 0,
-                "collector": collected.meta,
+                "collector": meta,
             }
         )
-
+    collected = CollectedItems(items, meta)
     df = collected.to_df(source, date)
-
-    inserted_attempt = db.upsert_df(
-        "bronze",
-        "raw_items",
-        df,
-        UPSERT_COLUMNS,
-    )
-
+    inserted_attempt = db.upsert_df("bronze", "raw_items", df, UPSERT_COLUMNS)
     return MaterializeResult(
         metadata={
             "source": source,
             "date": date,
-            "collected": int(len(df)),
-            "insert_attempted": int(inserted_attempt),
-            "collector": collected.meta,
+            "collected": len(df),
+            "insert_attempted": inserted_attempt,
+            "collector": meta,
         }
     )
 
@@ -75,22 +69,30 @@ async def _materialize_raw(
 async def raw_gh_issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    collector: CollectorsResource,
+    github: GitHubResource,
 ) -> MaterializeResult:
-    return await _materialize_raw(db, collector, "gh_issues", context.partition_key)
+    date = context.partition_key
+    items, meta = await github.fetch(
+        "search/issues",
+        date,
+        f"is:issue comments:>{config.collectors.github.min_comments} reactions:>{config.collectors.github.min_reactions}",
+    )
+    return await materialize_raw(db, items, meta, "gh_issues", date)
 
 
 @asset(
     partitions_def=daily_partitions,
     group_name="bronze",
-    description="Raw GitHub discussions per day. Writes into bronze.raw_items (source=gh_discussions, post_type=discussion). Stub until implemented.",
+    description="Raw GitHub discussions per day. Writes into bronze.raw_items (source=gh_discussions, post_type=discussion).",
 )
 async def raw_gh_discussions(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    collector: CollectorsResource,
+    github: GitHubResource,
 ) -> MaterializeResult:
-    return await _materialize_raw(db, collector, "gh_discussions", context.partition_key)
+    date = context.partition_key
+    items, meta = await github.fetch("search/issues", date, "is:discussion")
+    return await materialize_raw(db, items, meta, "gh_discussions", date)
 
 
 @asset(
@@ -101,9 +103,10 @@ async def raw_gh_discussions(
 async def raw_rd(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    collector: CollectorsResource,
+    reddit,
 ) -> MaterializeResult:
-    return await _materialize_raw(db, collector, "rd", context.partition_key)
+    items, meta = await reddit.collect(context.partition_key)
+    return await materialize_raw(db, items, meta, "rd", context.partition_key)
 
 
 @asset(
@@ -114,9 +117,10 @@ async def raw_rd(
 async def raw_so(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    collector: CollectorsResource,
+    stackoverflow,
 ) -> MaterializeResult:
-    return await _materialize_raw(db, collector, "so", context.partition_key)
+    items, meta = await stackoverflow.collect(context.partition_key)
+    return await materialize_raw(db, items, meta, "so", context.partition_key)
 
 
 @asset(
@@ -127,6 +131,7 @@ async def raw_so(
 async def raw_hn(
     context: AssetExecutionContext,
     db: DuckDBResource,
-    collector: CollectorsResource,
+    hackernews,
 ) -> MaterializeResult:
-    return await _materialize_raw(db, collector, "hn", context.partition_key)
+    items, meta = await hackernews.collect(context.partition_key)
+    return await materialize_raw(db, items, meta, "hn", context.partition_key)

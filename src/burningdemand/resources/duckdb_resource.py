@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from dagster import ConfigurableResource
+from filelock import FileLock
 from pydantic import Field, PrivateAttr
 
 
@@ -12,6 +13,7 @@ class DuckDBResource(ConfigurableResource):
     schema_path: str = Field(default="src/burningdemand/schema/duckdb.sql")
 
     _conn: Optional[Any] = PrivateAttr(default=None)
+    _lock: Optional[FileLock] = PrivateAttr(default=None)
 
     def _get_conn(self):
         """Create a new connection (used when no run-scoped connection is set)."""
@@ -25,7 +27,13 @@ class DuckDBResource(ConfigurableResource):
         return self._get_conn()
 
     def setup_for_execution(self, context) -> None:
-        """Open one connection for the run and ensure schema exists."""
+        """Acquire a cross-process lock, open one connection for the run, and ensure schema exists.
+        Only one run can hold the DuckDB connection at a time (avoids lock errors when
+        materializing multiple partitions in parallel).
+        """
+        lock_path = str(Path(self.db_path).with_suffix(Path(self.db_path).suffix + ".lock"))
+        self._lock = FileLock(lock_path)
+        self._lock.acquire()  # blocking; released in teardown_after_execution
         self._conn = self._get_conn()
         conn = self._conn
         for schema in ["bronze", "silver", "gold"]:
@@ -36,13 +44,19 @@ class DuckDBResource(ConfigurableResource):
         conn.execute(schema_file.read_text())
 
     def teardown_after_execution(self, context) -> None:
-        """Close the run-scoped connection."""
+        """Close the run-scoped connection and release the cross-process lock."""
         if self._conn is not None:
             try:
                 self._conn.close()
             except Exception:
                 pass
             self._conn = None
+        if self._lock is not None:
+            try:
+                self._lock.release()
+            except Exception:
+                pass
+            self._lock = None
 
     def query_df(self, sql: str, params=None) -> pd.DataFrame:
         conn = self._conn_or_new()

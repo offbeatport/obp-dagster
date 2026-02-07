@@ -1,4 +1,4 @@
-"""Types for collectors: RawItem and CollectedItems."""
+"""Schema for raw collected items: RawItem and CollectedItems (bronze.raw_items)."""
 
 import dataclasses
 from typing import Any, Dict, List
@@ -10,7 +10,7 @@ from burningdemand.utils.url import normalize_url, url_hash
 
 @dataclasses.dataclass
 class RawItem:
-    """One collected item. Every collector must include all fields (use "" for org_name/product_name when N/A)."""
+    """One collected item. All sources must provide all fields (use "" for org_name/product_name when N/A)."""
 
     url: str = ""
     title: str = ""
@@ -45,7 +45,7 @@ _TO_DF_COLUMNS = [
 
 
 class CollectedItems:
-    """Result of a collect run: items plus metadata. Converts to DataFrame for bronze.raw_items."""
+    """Items plus metadata from a collection run. Converts to DataFrame for bronze.raw_items."""
 
     def __init__(self, items: List[RawItem], meta: Dict[str, Any]) -> None:
         self.items = items

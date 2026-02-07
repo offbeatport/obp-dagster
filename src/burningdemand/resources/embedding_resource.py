@@ -8,6 +8,7 @@ from pydantic import Field
 
 class EmbeddingResource(ConfigurableResource):
     """Model name read from config at setup time if not provided (avoids import-time config)."""
+
     model_name: Optional[str] = Field(default=None)
 
     def setup_for_execution(self, context) -> None:
@@ -24,6 +25,6 @@ class EmbeddingResource(ConfigurableResource):
         return self._model.encode(
             texts,
             batch_size=config.embeddings.encode_batch_size,
-            show_progress_bar=False,
+            show_progress_bar=True,
             normalize_embeddings=True,
         )

@@ -1,4 +1,4 @@
-"""Reddit posts collector."""
+"""Reddit resource: collects posts for a given date."""
 
 import asyncio
 from datetime import datetime, timezone
@@ -7,13 +7,12 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from dagster import ConfigurableResource
 from pyrate_limiter import Duration
-from pyrate_limiter.limiter_factory import create_inmemory_limiter, create_sqlite_limiter
+from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
-from burningdemand.utils.batch_requests import batch_requests
+from burningdemand.schema.raw_items import RawItem
+from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
-from burningdemand.resources.collectors.types import RawItem
 from burningdemand.utils.url import iso_date_to_utc_bounds
-
 
 RATE_LIMITER = create_sqlite_limiter(
     rate_per_duration=60,
@@ -24,8 +23,8 @@ RATE_LIMITER = create_sqlite_limiter(
 )
 
 
-class RedditCollector(ConfigurableResource):
-    """Collector for Reddit posts."""
+class RedditResource(ConfigurableResource):
+    """Collects Reddit posts for the given date."""
 
     reddit_client_id: Optional[str] = None
     reddit_client_secret: Optional[str] = None
@@ -57,23 +56,17 @@ class RedditCollector(ConfigurableResource):
         req_count = 0
 
         if client_id and client_secret:
-            token_specs = [
-                {
-                    "method": "POST",
-                    "url": "https://www.reddit.com/api/v1/access_token",
-                    "auth": (client_id, client_secret),
-                    "data": {"grant_type": "client_credentials"},
-                    "headers": {"User-Agent": user_agent},
-                }
-            ]
+            token_specs = [{
+                "method": "POST",
+                "url": "https://www.reddit.com/api/v1/access_token",
+                "auth": (client_id, client_secret),
+                "data": {"grant_type": "client_credentials"},
+                "headers": {"User-Agent": user_agent},
+            }]
             token_pairs = await batch_requests(
-                self._client,
-                self._context,
-                token_specs,
-                limiter=RATE_LIMITER,
+                self._client, self._context, token_specs, limiter=RATE_LIMITER
             )
             req_count += len(token_pairs)
-            token = None
             for _, r in token_pairs:
                 if r is not None:
                     token = r.json().get("access_token")
@@ -88,28 +81,21 @@ class RedditCollector(ConfigurableResource):
             f"Reddit: {len(subreddits)} subreddits, {'OAuth' if token else 'public'}"
         )
 
-        sub_specs = [
-            {
-                "method": "GET",
-                "url": f"{base}/r/{sub}/new",
-                "params": {"limit": 100},
-                "headers": headers,
-            }
-            for sub in subreddits
-        ]
+        sub_specs = [{
+            "method": "GET",
+            "url": f"{base}/r/{sub}/new",
+            "params": {"limit": 100},
+            "headers": headers,
+        } for sub in subreddits]
 
         sub_pairs = await batch_requests(
-            self._client,
-            self._context,
-            sub_specs,
-            limiter=RATE_LIMITER,
+            self._client, self._context, sub_specs, limiter=RATE_LIMITER
         )
         req_count += len(sub_pairs)
 
         results = [
             r.json().get("data", {}).get("children", [])
-            for _, r in sub_pairs
-            if r is not None
+            for _, r in sub_pairs if r is not None
         ]
         items = []
         for children in results:
@@ -124,9 +110,7 @@ class RedditCollector(ConfigurableResource):
                             RawItem(
                                 url=f"https://reddit.com{d.get('permalink','')}",
                                 title=title,
-                                body=body[
-                                    : config.labeling.max_body_length_for_snippet
-                                ],
+                                body=body[: config.labeling.max_body_length_for_snippet],
                                 created_at=datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
@@ -141,8 +125,4 @@ class RedditCollector(ConfigurableResource):
                         )
 
         self._context.log.info(f"Reddit: {req_count} requests, {len(items)} items")
-        return items, {
-            "requests": req_count,
-            "subs": subreddits,
-            "used_oauth": bool(token),
-        }
+        return items, {"requests": req_count, "subs": subreddits, "used_oauth": bool(token)}

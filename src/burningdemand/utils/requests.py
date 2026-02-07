@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from pyrate_limiter import Duration, Limiter
@@ -82,7 +82,7 @@ async def batch_requests(
     tasks = [
         asyncio.create_task(run_request(idx, req)) for idx, req in enumerate(requests)
     ]
-    results: Dict[int, httpx.Response] = {}
+    results: Dict[int, Optional[httpx.Response]] = {}
     completed = 0
     for task in asyncio.as_completed(tasks):
         idx, resp = await task

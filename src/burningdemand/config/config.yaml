@@ -35,7 +35,7 @@ embeddings:
   model: "BAAI/bge-large-en-v1.5"
 
   # Batch size when calling the embedding model (SentenceTransformer.encode)
-  encode_batch_size: 256
+  encode_batch_size: 16
   # Batch size for splitting items in the embeddings asset
   asset_batch_size: 1000
 
