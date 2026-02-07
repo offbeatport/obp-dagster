@@ -39,11 +39,12 @@ class GitHubResource(ConfigurableResource):
         if not getattr(self, "_gh", None):
             raise RuntimeError("GitHubResource client not initialized")
 
-        suffix = query_suffix.strip()
+        suffix = (query_suffix if isinstance(query_suffix, str) else "").strip()
         gql_query = f"""
-        query GitHubSearch($queryStr: String!, $first: Int!, $after: String) {{
+        query GitHubSearch($queryStr: String!, $first: Int!, $after: String) {{          
           rateLimit {{ limit remaining resetAt }}
           search(query: $queryStr, type: {type}, first: $first, after: $after) {{
+            discussionCount
             pageInfo {{ hasNextPage endCursor }}
             nodes {{
               __typename
@@ -77,6 +78,8 @@ class GitHubResource(ConfigurableResource):
                 n_requests += 1
                 page_in_range += 1
                 search = root.get("search")
+                s = search.get("discussionCount")
+                log.info(f"discussionCount: {s}")
                 if not search:
                     break
                 nodes = [n for n in (search.get("nodes") or []) if n]

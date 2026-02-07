@@ -21,16 +21,21 @@ async def raw_gh_discussions(
     github: GitHubResource,
 ) -> MaterializeResult:
     date = context.partition_key
-    node_fragment = (
-        "... on Discussion { id number url title body createdAt "
-        "repository { nameWithOwner } comments { totalCount } "
-        "reactions { totalCount } }"
-    )
-    query_suffix = (
-        f"is:discussion"
-        # f"is:discussion comments:>{config.resources.github.min_comments} "
-        # f"reactions:>{config.resources.github.min_reactions}"
-    )
+    node_fragment = """
+        ... on Discussion {
+            id 
+            number 
+            url 
+            title 
+            body 
+            createdAt 
+            repository { nameWithOwner } 
+            comments { totalCount } 
+            reactions { totalCount } 
+        }
+"""
+    query_suffix = ""
+    # query_suffix = f"is:discussion comments:>={config.resources.github.min_comments} reactions:>={config.resources.github.min_reactions}"
     raw_items, meta = await github.search(
         date,
         node_fragment,
