@@ -66,12 +66,12 @@ class RepresentativesConfig(BaseModel):
 class GitHubCollectorConfig(BaseModel):
     per_page: int
     max_pages: int
-    queries_per_day: int = 12
+    queries_per_day: int
     min_reactions: int
     min_comments: int
 
 
-class CollectorsConfig(BaseModel):
+class ResourcesConfig(BaseModel):
     github: GitHubCollectorConfig
 
 
@@ -85,7 +85,7 @@ class Config(BaseModel):
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
     representatives: RepresentativesConfig
-    collectors: CollectorsConfig
+    resources: ResourcesConfig
     keywords: dict[str, Any]
     prompts: dict[str, Any]
 

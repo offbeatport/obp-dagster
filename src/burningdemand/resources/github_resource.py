@@ -1,116 +1,134 @@
-"""GitHub resource: fetches issues or discussions by path, day, and query."""
+"""GitHub resource: REST and GraphQL fetch for issues/discussions (githubkit)."""
 
-import asyncio
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
+from githubkit import GitHub
 
-from burningdemand.schema.raw_items import RawItem
 from dagster import ConfigurableResource, EnvVar
-from pyrate_limiter import Duration
-from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.config import config
 from burningdemand.utils.date_ranges import split_day_into_ranges
-from burningdemand.utils.requests import batch_requests
-
-RATE_LIMITER = create_sqlite_limiter(
-    rate_per_duration=30,
-    duration=Duration.MINUTE,
-    buffer_ms=5000,
-    db_path="data/rate_limiter_gh.db",
-    use_file_lock=True,
-)
 
 
 class GitHubResource(ConfigurableResource):
-    """Fetches GitHub API by path, day, and query. Builds request specs internally."""
-
     github_token: str = EnvVar("GITHUB_TOKEN")
 
     def setup_for_execution(self, context) -> None:
         self._context = context
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
-            headers={"User-Agent": "BurningDemand/0.1"},
+        self._gh = GitHub(
+            self.github_token, user_agent="BurningDemand/0.1", timeout=30.0
         )
+        self._cfg = config.resources.github
 
     def teardown_after_execution(self, context) -> None:
-        if hasattr(self, "_client") and self._client is not None:
-            try:
-                asyncio.run(self._client.aclose())
-            except Exception:
-                pass
-            self._client = None
+        self._gh = None
+
+    def _log(self):
+        return getattr(getattr(self, "_context", None), "log", None)
 
     async def fetch(
         self, path: str, day: str, query: str
-    ) -> Tuple[List[RawItem], Dict]:
-        """Build specs from path, day, query; execute and parse into RawItem list.
-        post_type is inferred from query ("is:discussion" -> discussion, else issue).
-        """
-        if self._client is None:
+    ) -> Tuple[List[Dict[str, Any]], Dict]:
+        """REST search/issues: return raw API items."""
+
+        if not getattr(self, "_gh", None):
+            raise RuntimeError("GitHubResource client not initialized")
+        cfg = self._cfg
+        ranges = split_day_into_ranges(day, cfg.queries_per_day)
+        queries = [f"created:{s}..{e} {query}" for s, e in ranges]
+        if not queries:
+            return [], {"requests": 0, "ok": 0}
+        items: List[Dict[str, Any]] = []
+        ok = 0
+        for q in queries:
+            for p in range(1, cfg.max_pages + 1):
+                resp = await self._gh.arequest(
+                    "GET",
+                    f"/{path.lstrip('/')}",
+                    params={"q": q, "per_page": cfg.per_page, "page": p},
+                )
+                ok += 1
+                items.extend((resp.parsed_data or {}).get("items", []) or [])
+
+        self._log().info(f"GitHub REST: {len(items)} items")
+        return items, {"requests": len(queries) * cfg.max_pages, "ok": ok}
+
+    async def search(
+        self,
+        day: str,
+        node_fragment: str,
+        query_suffix: str = "",
+        hour_splits: int = 24,
+    ) -> Tuple[List[Dict[str, Any]], Dict]:
+        """GraphQL search: return raw nodes with the provided fragment."""
+
+        if not getattr(self, "_gh", None):
             raise RuntimeError("GitHubResource client not initialized")
 
-        cfg = config.collectors.github
-        ranges = split_day_into_ranges(day, cfg.queries_per_day)
-        full_queries = [
-            f"created:{start_z}..{end_z} {query}" for start_z, end_z in ranges
-        ]
-        specs = [
-            {
-                "method": "GET",
-                "url": f"https://api.github.com/{path.lstrip('/')}",
-                "params": {"q": q, "per_page": cfg.per_page, "page": p},
-                "headers": {"Authorization": f"token {self.github_token}"},
-            }
-            for q in full_queries
-            for p in range(1, cfg.max_pages + 1)
-        ]
-        if not specs:
-            return [], {"requests": 0, "ok": 0}
+        suffix = query_suffix.strip()
+        gql_query = f"""
+        query GitHubSearch($queryStr: String!, $first: Int!, $after: String) {{
+          rateLimit {{ limit remaining resetAt }}
+          search(query: $queryStr, type: ISSUE, first: $first, after: $after) {{
+            pageInfo {{ hasNextPage endCursor }}
+            nodes {{
+              __typename
+              {node_fragment}
+            }}
+          }}
+        }}
+        """
+        ranges = split_day_into_ranges(day, hour_splits)
+        items: List[Dict[str, Any]] = []
+        n_requests = 0
+        total_ranges = len(ranges)
+        log = self._log()
 
-        post_type = "discussion" if "is:discussion" in query else "issue"
-
-        response_pairs = await batch_requests(
-            self._client,
-            self._context,
-            specs,
-            limiter=RATE_LIMITER,
-        )
-
-        max_body = config.labeling.max_body_length_for_snippet
-        items: List[RawItem] = []
-        for _, resp in response_pairs:
-            if resp is None:
-                continue
-            for it in resp.json().get("items", []):
-                url = it.get("html_url") or ""
-                parts = url.rstrip("/").split("/")
-                org_name = parts[3] if len(parts) > 3 else ""
-                product_name = parts[4] if len(parts) > 4 else ""
-                body = (it.get("body") or "")[:max_body]
-                items.append(
-                    RawItem(
-                        url=url,
-                        title=it.get("title") or "",
-                        body=body,
-                        created_at=it.get("created_at") or "",
-                        source_post_id=str(it.get("id")),
-                        comment_count=it.get("comments", 0),
-                        vote_count=0,
-                        post_type=post_type,
-                        reaction_count=it.get("reactions", {}).get("total_count", 0)
-                        or 0,
-                        org_name=org_name,
-                        product_name=product_name,
-                    )
+        for range_idx, (start_z, end_z) in enumerate(ranges, start=1):
+            query_str = f"created:{start_z}..{end_z} {suffix}".strip()
+            cursor = None
+            page_in_range = 0
+            if log:
+                log.info(
+                    "GitHub GraphQL: range %s/%s %s..%s",
+                    range_idx,
+                    total_ranges,
+                    start_z,
+                    end_z,
                 )
+            while True:
+                root = await self._gh.graphql.arequest(
+                    gql_query, {"queryStr": query_str, "first": 100, "after": cursor}
+                )
+                n_requests += 1
+                page_in_range += 1
+                search = root.get("search")
+                if not search:
+                    break
+                nodes = [n for n in (search.get("nodes") or []) if n]
+                items.extend(nodes)
+                rate = root.get("rateLimit") or {}
+                remaining = rate.get("remaining")
+                if log:
+                    msg = (
+                        "GitHub GraphQL: request %s — range %s/%s page %s: +%s items (total %s)"
+                        % (
+                            n_requests,
+                            range_idx,
+                            total_ranges,
+                            page_in_range,
+                            len(nodes),
+                            len(items),
+                        )
+                    )
+                    if remaining is not None:
+                        msg += " — rate limit remaining: %s" % remaining
+                    log.info(msg)
+                pi = search.get("pageInfo") or {}
+                if not pi.get("hasNextPage"):
+                    break
+                cursor = pi.get("endCursor")
 
-        ok_count = sum(1 for _, r in response_pairs if r is not None)
-        log = getattr(getattr(self, "_context", None), "log", None)
-        if log is not None:
-            log.info(
-                f"GitHub {post_type}: {ok_count}/{len(response_pairs)} requests ok, {len(items)} items"
-            )
-        return items, {"requests": len(response_pairs), "ok": ok_count}
+        if log:
+            log.info("GitHub GraphQL: %s items", len(items))
+        return items, {"requests": n_requests, "ok": n_requests}

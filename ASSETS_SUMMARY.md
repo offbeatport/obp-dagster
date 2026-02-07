@@ -17,7 +17,7 @@ bronze.raw_items → silver.embeddings → silver.clusters → silver.summaries 
 - **Partition**: `source_day_partitions` (partitioned by source and date)
 - **Dependencies**: None (entry point)
 - **What it does**:
-  - Collects issues from GitHub, StackOverflow, Reddit, or HackerNews using collectors
+  - Collects issues from GitHub, StackOverflow, Reddit, or HackerNews using resources
   - Normalizes URLs and generates URL hashes
   - Stores raw data: url_hash, source, collection_date, url, title, body, created_at
   - Handles rate limiting per API (e.g., 30 requests per 60s for GitHub)

@@ -1,4 +1,4 @@
-collectors:
+resources:
   github:
     # Number of results per page when calling GitHub's search API
     per_page: 100
