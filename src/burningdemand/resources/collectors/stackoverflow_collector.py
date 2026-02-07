@@ -11,6 +11,7 @@ from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
 from burningdemand.utils.config import config
+from burningdemand.resources.collectors.types import RawItem
 from burningdemand.utils.url import iso_date_to_utc_bounds
 
 
@@ -43,7 +44,7 @@ class StackOverflowCollector(ConfigurableResource):
                 pass
             self._client = None
 
-    async def collect(self, date: str) -> Tuple[List[Dict], Dict]:
+    async def collect(self, date: str) -> Tuple[List[RawItem], Dict]:
         """Collect StackOverflow questions for the given date."""
         from_ts, to_ts = iso_date_to_utc_bounds(date)
         tags = config.build_stackoverflow_tags()
@@ -72,14 +73,18 @@ class StackOverflowCollector(ConfigurableResource):
                 }
             )
 
-        responses = await batch_requests(
+        response_pairs = await batch_requests(
             self._client,
             self._context,
             specs,
             limiter=RATE_LIMITER,
         )
 
-        pages = [resp.json().get("items", []) for resp in responses]
+        pages = [
+            resp.json().get("items", [])
+            for _, resp in response_pairs
+            if resp is not None
+        ]
         items = []
         for page_items in pages:
             for it in page_items:
@@ -88,28 +93,31 @@ class StackOverflowCollector(ConfigurableResource):
                 if config.matches_keywords(f"{title} {body}", "stackoverflow"):
                     created = it.get("creation_date")
                     items.append(
-                        {
-                            "url": it.get("link") or "",
-                            "title": title,
-                            "body": body[
+                        RawItem(
+                            url=it.get("link") or "",
+                            title=title,
+                            body=body[
                                 : config.labeling.max_body_length_for_snippet
                             ],
-                            "created_at": (
+                            created_at=(
                                 datetime.fromtimestamp(
                                     int(created), tz=timezone.utc
                                 ).isoformat()
                                 if created
                                 else ""
                             ),
-                            "source_post_id": str(it.get("question_id") or ""),
-                            "comment_count": it.get("answer_count", 0) or 0,
-                            "vote_count": it.get("score", 0) or 0,
-                            "post_type": "question",
-                            "reaction_count": 0,
-                        }
+                            source_post_id=str(it.get("question_id") or ""),
+                            comment_count=it.get("answer_count", 0) or 0,
+                            vote_count=it.get("score", 0) or 0,
+                            post_type="question",
+                            reaction_count=0,
+                            org_name="",
+                            product_name="",
+                        )
                     )
 
+        ok_count = sum(1 for _, r in response_pairs if r is not None)
         self._context.log.info(
-            f"StackOverflow: {len(responses)} requests, {len(items)} items"
+            f"StackOverflow: {ok_count}/{len(response_pairs)} requests ok, {len(items)} items"
         )
-        return items, {"requests": len(responses), "used_key": bool(key)}
+        return items, {"requests": len(response_pairs), "ok": ok_count, "used_key": bool(key)}

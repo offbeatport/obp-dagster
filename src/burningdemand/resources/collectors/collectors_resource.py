@@ -1,15 +1,26 @@
 """Composite collectors resource that delegates to per-source collectors."""
 
-from typing import Dict, List, Tuple
+from typing import Any, Dict, Tuple
 
 from dagster import ConfigurableResource
 
-from .github_collector import GitHubCollector
-from .stackoverflow_collector import StackOverflowCollector
-from .reddit_collector import RedditCollector
-from .hackernews_collector import HackerNewsCollector
+from burningdemand.resources.collectors.types import CollectedItems, RawItem
 
-RAW_ASSET_KEYS = ("gh_issues", "gh_discussions", "rd", "so", "hn")
+from .github_collector import GitHubCollector
+from .hackernews_collector import HackerNewsCollector
+from .reddit_collector import RedditCollector
+from .stackoverflow_collector import StackOverflowCollector
+
+# source -> (collector attribute name, kwargs for .collect(date, **kwargs))
+_SOURCE_DISPATCH: Dict[str, Tuple[str, Dict[str, Any]]] = {
+    "gh_issues": ("github_collector", {"post_type": "issue"}),
+    "gh_discussions": ("github_collector", {"post_type": "discussion"}),
+    "rd": ("reddit_collector", {}),
+    "so": ("stackoverflow_collector", {}),
+    "hn": ("hackernews_collector", {}),
+}
+
+_COLLECTORS = ["github_collector", "stackoverflow_collector", "reddit_collector", "hackernews_collector"]
 
 
 class CollectorsResource(ConfigurableResource):
@@ -22,33 +33,25 @@ class CollectorsResource(ConfigurableResource):
 
     def setup_for_execution(self, context) -> None:
         self._context = context
-        self.github_collector.setup_for_execution(context)
-        self.stackoverflow_collector.setup_for_execution(context)
-        self.reddit_collector.setup_for_execution(context)
-        self.hackernews_collector.setup_for_execution(context)
+        for name in _COLLECTORS:
+            getattr(self, name).setup_for_execution(context)
 
     def teardown_after_execution(self, context) -> None:
-        self.github_collector.teardown_after_execution(context)
-        self.stackoverflow_collector.teardown_after_execution(context)
-        self.reddit_collector.teardown_after_execution(context)
-        self.hackernews_collector.teardown_after_execution(context)
+        for name in _COLLECTORS:
+            getattr(self, name).teardown_after_execution(context)
 
-    async def collect_by_asset(
-        self,
-        asset_key: str,
-        date: str,
-    ) -> Tuple[List[Dict], Dict]:
-        """Collect items for a single raw_* asset partition (day only).
-        asset_key: one of gh_issues, gh_discussions, rd, so, hn.
+    async def collect(self, source: str, date: str) -> CollectedItems:
+        """Collect for a single raw_* asset partition (day only).
+
+        Returns a CollectedItems with .items (list of RawItem) and .meta (dict).
+        Use .to_df(source, date) to build the DataFrame for upsert into bronze.raw_items.
+
+        source: one of gh_issues, gh_discussions, rd, so, hn.
         """
-        if asset_key == "gh_issues":
-            return await self.github_collector.collect(date, post_type="issue")
-        if asset_key == "gh_discussions":
-            return await self.github_collector.collect(date, post_type="discussion")
-        if asset_key == "rd":
-            return await self.reddit_collector.collect(date)
-        if asset_key == "so":
-            return await self.stackoverflow_collector.collect(date)
-        if asset_key == "hn":
-            return await self.hackernews_collector.collect(date)
-        return [], {"requests": 0, "note": f"unknown asset_key={asset_key}"}
+        entry = _SOURCE_DISPATCH.get(source)
+        if entry is None:
+            return CollectedItems([], {"requests": 0, "note": f"unknown source={source}"})
+        collector_name, kwargs = entry
+        collector = getattr(self, collector_name)
+        items, meta = await collector.collect(date, **kwargs)
+        return CollectedItems(items, meta)

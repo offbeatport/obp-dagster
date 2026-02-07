@@ -27,7 +27,9 @@ class PocketBaseResource(ConfigurableResource):
     def user_id(self) -> str:
         """Authenticated user's record id (for reporter, etc.). Available after setup_for_execution."""
         if self._user_id is None:
-            raise RuntimeError("PocketBase not authenticated yet (user_id unavailable).")
+            raise RuntimeError(
+                "PocketBase not authenticated yet (user_id unavailable)."
+            )
         return self._user_id
 
     def _headers(self) -> Dict[str, str]:
@@ -67,18 +69,36 @@ class PocketBaseResource(ConfigurableResource):
         self, collection: str, filter_expr: str
     ) -> Optional[Dict[str, Any]]:
         """Get a single record from a collection matching the filter."""
+        items = self.get_records(collection, filter_expr, per_page=1)
+        return items[0] if items else None
+
+    def get_records(
+        self,
+        collection: str,
+        filter_expr: str,
+        per_page: int = 500,
+    ) -> list[Dict[str, Any]]:
+        """Get all records from a collection matching the filter (paginated)."""
         self._ensure_auth()
         url = f"{self._base_url}/api/collections/{collection}/records"
-        resp = requests.get(
-            url,
-            headers=self._headers(),
-            params={"filter": filter_expr, "perPage": 1, "page": 1},
-            timeout=self.timeout_s,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        items = data.get("items") or []
-        return items[0] if items else None
+        out: list[Dict[str, Any]] = []
+        page = 1
+        while True:
+            resp = requests.get(
+                url,
+                headers=self._headers(),
+                params={"filter": filter_expr, "perPage": per_page, "page": page},
+                timeout=self.timeout_s,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("items") or []
+            out.extend(items)
+            total = data.get("totalItems", 0)
+            if len(out) >= total or len(items) < per_page:
+                break
+            page += 1
+        return out
 
     def create(self, collection: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new record in a collection."""

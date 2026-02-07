@@ -1,10 +1,8 @@
 import asyncio
-import pprint
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import httpx
-from dagster import AssetExecutionContext
 from pyrate_limiter import Duration, Limiter
 from pyrate_limiter.limiter_factory import create_inmemory_limiter
 
@@ -21,12 +19,11 @@ async def batch_requests(
     context: Any,
     requests: List[dict],
     limiter: Optional[Limiter] = DEFAULT_LIMITER,
-) -> List[httpx.Response]:
+) -> List[Tuple[int, Optional[httpx.Response]]]:
     """
-    Fire all requests concurrently.
-    Only wait when the rate limiter enforces it.
+    Fire all requests concurrently. Returns list of (index, response | None) in request order.
+    Failed requests yield (idx, None) so callers can log or alert on partial failures.
     Retries on connection errors (ConnectError, ConnectTimeout).
-    Responses are returned in request order.
     """
     if not requests:
         return []
@@ -120,8 +117,11 @@ async def batch_requests(
                 req.get("url"),
             )
 
-    # Preserve request order for successful responses; failed ones are omitted.
-    ordered = [results[i] for i in range(n) if i in results]
+    # Return (idx, resp | None) in request order so callers see which indices failed.
+    ordered = [(i, results.get(i)) for i in range(n)]
+    failed_count = sum(1 for _, r in ordered if r is None)
     elapsed = time.monotonic() - start
-    context.log.info(f"Batch completed: {n} requests in {elapsed:.2f}s")
+    context.log.info(
+        f"Batch completed: {n} requests in {elapsed:.2f}s ({failed_count} failed)"
+    )
     return ordered

@@ -11,6 +11,7 @@ from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.utils.batch_requests import batch_requests
 from burningdemand.utils.config import config
+from burningdemand.resources.collectors.types import RawItem
 from burningdemand.utils.url import iso_date_to_utc_bounds
 
 
@@ -42,7 +43,7 @@ class HackerNewsCollector(ConfigurableResource):
                 pass
             self._client = None
 
-    async def collect(self, date: str) -> Tuple[List[Dict], Dict]:
+    async def collect(self, date: str) -> Tuple[List[RawItem], Dict]:
         """Collect Hacker News stories for the given date."""
         from_ts, to_ts = iso_date_to_utc_bounds(date)
 
@@ -61,14 +62,18 @@ class HackerNewsCollector(ConfigurableResource):
             for page in range(10)
         ]
 
-        responses = await batch_requests(
+        response_pairs = await batch_requests(
             self._client,
             self._context,
             specs,
             limiter=RATE_LIMITER,
         )
 
-        pages = [resp.json().get("hits", []) for resp in responses]
+        pages = [
+            resp.json().get("hits", [])
+            for _, resp in response_pairs
+            if resp is not None
+        ]
         items = []
         for hits in pages:
             for it in hits:
@@ -77,29 +82,32 @@ class HackerNewsCollector(ConfigurableResource):
                 if config.matches_keywords(f"{title} {body}", "hackernews"):
                     created_i = int(it.get("created_at_i") or 0)
                     items.append(
-                        {
-                            "url": it.get("url")
+                        RawItem(
+                            url=it.get("url")
                             or f"https://news.ycombinator.com/item?id={it.get('objectID')}",
-                            "title": title,
-                            "body": body[
+                            title=title,
+                            body=body[
                                 : config.labeling.max_body_length_for_snippet
                             ],
-                            "created_at": (
+                            created_at=(
                                 datetime.fromtimestamp(
                                     created_i, tz=timezone.utc
                                 ).isoformat()
                                 if created_i
                                 else ""
                             ),
-                            "source_post_id": str(it.get("objectID") or ""),
-                            "comment_count": it.get("num_comments", 0) or 0,
-                            "vote_count": it.get("points", 0) or 0,
-                            "post_type": "story",
-                            "reaction_count": 0,
-                        }
+                            source_post_id=str(it.get("objectID") or ""),
+                            comment_count=it.get("num_comments", 0) or 0,
+                            vote_count=it.get("points", 0) or 0,
+                            post_type="story",
+                            reaction_count=0,
+                            org_name="",
+                            product_name="",
+                        )
                     )
 
+        ok_count = sum(1 for _, r in response_pairs if r is not None)
         self._context.log.info(
-            f"HackerNews: {len(responses)} requests, {len(items)} items"
+            f"HackerNews: {ok_count}/{len(response_pairs)} requests ok, {len(items)} items"
         )
-        return items, {"requests": len(responses)}
+        return items, {"requests": len(response_pairs), "ok": ok_count}

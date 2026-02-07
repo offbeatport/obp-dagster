@@ -117,7 +117,7 @@ def get_cluster_representatives(
     snippets = []
     for _, row in representatives.iterrows():
         body = str(row.get("body", "") or "")
-        source = str(row.get("source", "") or "github")
+        source = str(row.get("source", "") or "gh_issues")
         clean_body_text = clean_body(body, source)
         snippet = clean_body_text[:max_body_length].strip()
         if snippet:

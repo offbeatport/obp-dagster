@@ -12,11 +12,15 @@ from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.pocketbase_resource import PocketBaseResource
 
 _SOURCE_TYPE_MAP = {
-    "github": "github_issue",
-    "stackoverflow": "stackoverflow_question",
-    "reddit": "reddit_thread",
-    "hackernews": "other",
+    "gh_issues": "github_issue",
+    "gh_discussions": "github_discussion",
+    "rd": "reddit_thread",
+    "so": "stackoverflow_question",
+    "hn": "other",
 }
+
+CREATE_CONCURRENCY = 5
+FETCH_EXISTING_CONCURRENCY = 5
 
 
 @asset(
@@ -45,85 +49,92 @@ async def live_evidence(
     if len(evidence_rows) == 0:
         return MaterializeResult(metadata={"posted": 0, "skipped": 0, "errors": 0})
 
-    loop = asyncio.get_event_loop()
-
-    def check_issue(pb_client, filter_expr):
-        return pb_client.get_one_by_filter("issues", filter_expr)
-
-    def check_evidence(pb_client, filter_expr):
-        return pb_client.get_one_by_filter("evidence", filter_expr)
-
-    def create_evidence(pb_client, payload):
-        return pb_client.create("evidence", payload)
-
     date_escaped = str(date).replace('"', '\\"')
-    posted = 0
-    skipped = 0
-    errors = 0
-    issue_id_cache = {}
+    filter_expr = f'origin="collected" && cluster_date="{date_escaped} 00:00:00.000Z"'
+    existing_issues = pb.get_records("issues", filter_expr, per_page=500)
+    cluster_id_to_pb_issue_id = {int(r["cluster_id"]): r["id"] for r in existing_issues}
 
+    # Rows to consider: (cluster_id, url, body, posted_at, source_type); only if we have a PB issue
+    rows_with_issue = []
     for _, ev in evidence_rows.iterrows():
-        cluster_id = int(ev["cluster_id"])
-        ev_url = str(ev["url"])
-        ev_source = str(ev.get("source", ""))
-        ev_body = str(ev.get("body", ""))[:500]
-        ev_posted_at = str(ev.get("posted_at", ""))
+        cid = int(ev["cluster_id"])
+        if cid not in cluster_id_to_pb_issue_id:
+            continue
+        rows_with_issue.append(
+            (
+                cluster_id_to_pb_issue_id[cid],
+                str(ev["url"]),
+                str(ev.get("body", ""))[:500],
+                str(ev.get("posted_at", "")),
+                _SOURCE_TYPE_MAP.get(str(ev.get("source", "")), "other"),
+            )
+        )
 
+    # Fetch existing evidence for all involved issue IDs (parallel)
+    issue_ids = list({r[0] for r in rows_with_issue})
+    loop = asyncio.get_event_loop()
+    sem_fetch = asyncio.Semaphore(FETCH_EXISTING_CONCURRENCY)
+
+    def fetch_evidence_for_issue(issue_id: str):
+        return pb.get_records("evidence", f'issue="{issue_id}"', per_page=500)
+
+    async def fetch_one(iid: str):
+        async with sem_fetch:
+            return await loop.run_in_executor(
+                None,
+                fetch_evidence_for_issue,
+                iid,
+            )
+
+    existing_evidence_list = await asyncio.gather(
+        *[fetch_one(iid) for iid in issue_ids]
+    )
+    existing_by_issue = dict(zip(issue_ids, existing_evidence_list))
+    existing_pairs = set()
+    for recs in existing_by_issue.values():
+        for r in recs:
+            existing_pairs.add((r["issue"], r["url"]))
+
+    to_create = [
+        (issue_id, url, body, posted_at, source_type)
+        for (issue_id, url, body, posted_at, source_type) in rows_with_issue
+        if (issue_id, url) not in existing_pairs
+    ]
+
+    sem_create = asyncio.Semaphore(CREATE_CONCURRENCY)
+
+    async def create_one(payload: dict):
+        async with sem_create:
+            return await loop.run_in_executor(
+                None,
+                lambda p=payload: pb.create("evidence", p),
+            )
+
+    task_list = [
+        asyncio.create_task(
+            create_one(
+                {
+                    "issue": issue_id,
+                    "url": url,
+                    "source_type": source_type,
+                    "content_snippet": body,
+                    "posted_at": posted_at,
+                }
+            )
+        )
+        for (issue_id, url, body, posted_at, source_type) in to_create
+    ]
+    posted = 0
+    errors = 0
+    for done in asyncio.as_completed(task_list):
         try:
-            if cluster_id not in issue_id_cache:
-                filter_expr = f'origin="collected" && cluster_date="{date_escaped} 00:00:00.000Z" && cluster_id={cluster_id}'
-                existing_issue = await loop.run_in_executor(
-                    None,
-                    check_issue,
-                    pb,
-                    filter_expr,
-                )
-                if not existing_issue:
-                    context.log.warning(
-                        f"No PocketBase issue for cluster_date={date} cluster_id={cluster_id}; skipping evidence"
-                    )
-                    issue_id_cache[cluster_id] = None
-                    errors += 1
-                    continue
-                issue_id_cache[cluster_id] = existing_issue["id"]
-
-            issue_id = issue_id_cache[cluster_id]
-            if issue_id is None:
-                errors += 1
-                continue
-            ev_url_escaped = ev_url.replace('"', '\\"')
-            evidence_filter = f'issue="{issue_id}" && url="{ev_url_escaped}"'
-            existing_evidence = await loop.run_in_executor(
-                None,
-                check_evidence,
-                pb,
-                evidence_filter,
-            )
-
-            if existing_evidence:
-                skipped += 1
-                continue
-
-            evidence_payload = {
-                "issue": issue_id,
-                "url": ev_url,
-                "source_type": _SOURCE_TYPE_MAP.get(ev_source, "other"),
-                "content_snippet": ev_body,
-                "posted_at": ev_posted_at,
-            }
-            await loop.run_in_executor(
-                None,
-                create_evidence,
-                pb,
-                evidence_payload,
-            )
+            await done
             posted += 1
         except Exception as e:
-            context.log.warning(
-                f"Failed to create evidence for cluster_id={cluster_id} url={ev_url}: {e}"
-            )
+            context.log.warning("Failed to create evidence: %s", e)
             errors += 1
 
+    skipped = len(rows_with_issue) - len(to_create)
     return MaterializeResult(
         metadata={
             "posted": int(posted),

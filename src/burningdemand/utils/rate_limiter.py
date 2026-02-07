@@ -61,7 +61,6 @@ class RedisAsyncRateLimiter:
             if not blocking:
                 return False
             # Wait until next window
-            now = time.monotonic()
             window_start = int(time.time() / self._window_sec) * self._window_sec
             next_start = window_start + self._window_sec
             wait_sec = next_start - time.time()

@@ -11,6 +11,7 @@ from pyrate_limiter.limiter_factory import create_inmemory_limiter, create_sqlit
 
 from burningdemand.utils.batch_requests import batch_requests
 from burningdemand.utils.config import config
+from burningdemand.resources.collectors.types import RawItem
 from burningdemand.utils.url import iso_date_to_utc_bounds
 
 
@@ -44,7 +45,7 @@ class RedditCollector(ConfigurableResource):
                 pass
             self._client = None
 
-    async def collect(self, date: str) -> Tuple[List[Dict], Dict]:
+    async def collect(self, date: str) -> Tuple[List[RawItem], Dict]:
         """Collect Reddit posts for the given date."""
         from_ts, to_ts = iso_date_to_utc_bounds(date)
         client_id = self.reddit_client_id
@@ -65,14 +66,18 @@ class RedditCollector(ConfigurableResource):
                     "headers": {"User-Agent": user_agent},
                 }
             ]
-            token_resps = await batch_requests(
+            token_pairs = await batch_requests(
                 self._client,
                 self._context,
                 token_specs,
                 limiter=RATE_LIMITER,
             )
-            req_count += len(token_resps)
-            token = token_resps[0].json().get("access_token")
+            req_count += len(token_pairs)
+            token = None
+            for _, r in token_pairs:
+                if r is not None:
+                    token = r.json().get("access_token")
+                    break
 
         base = "https://oauth.reddit.com" if token else "https://api.reddit.com"
         headers = {"User-Agent": user_agent}
@@ -93,16 +98,18 @@ class RedditCollector(ConfigurableResource):
             for sub in subreddits
         ]
 
-        sub_resps = await batch_requests(
+        sub_pairs = await batch_requests(
             self._client,
             self._context,
             sub_specs,
             limiter=RATE_LIMITER,
         )
-        req_count += len(sub_resps)
+        req_count += len(sub_pairs)
 
         results = [
-            resp.json().get("data", {}).get("children", []) for resp in sub_resps
+            r.json().get("data", {}).get("children", [])
+            for _, r in sub_pairs
+            if r is not None
         ]
         items = []
         for children in results:
@@ -114,21 +121,23 @@ class RedditCollector(ConfigurableResource):
                     body = d.get("selftext") or ""
                     if config.matches_keywords(f"{title} {body}", "reddit"):
                         items.append(
-                            {
-                                "url": f"https://reddit.com{d.get('permalink','')}",
-                                "title": title,
-                                "body": body[
+                            RawItem(
+                                url=f"https://reddit.com{d.get('permalink','')}",
+                                title=title,
+                                body=body[
                                     : config.labeling.max_body_length_for_snippet
                                 ],
-                                "created_at": datetime.fromtimestamp(
+                                created_at=datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
-                                "source_post_id": str(d.get("id") or ""),
-                                "comment_count": d.get("num_comments", 0) or 0,
-                                "vote_count": d.get("score", 0) or 0,
-                                "post_type": "post",
-                                "reaction_count": 0,
-                            }
+                                source_post_id=str(d.get("id") or ""),
+                                comment_count=d.get("num_comments", 0) or 0,
+                                vote_count=d.get("score", 0) or 0,
+                                post_type="post",
+                                reaction_count=0,
+                                org_name="",
+                                product_name="",
+                            )
                         )
 
         self._context.log.info(f"Reddit: {req_count} requests, {len(items)} items")

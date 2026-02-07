@@ -4,6 +4,8 @@ import asyncio
 from typing import Dict, List, Tuple
 
 import httpx
+
+from burningdemand.resources.collectors.types import RawItem
 from dagster import ConfigurableResource, EnvVar
 from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
@@ -45,7 +47,7 @@ class GitHubCollector(ConfigurableResource):
 
     async def collect(
         self, date: str, post_type: str = "issue"
-    ) -> Tuple[List[Dict], Dict]:
+    ) -> Tuple[List[RawItem], Dict]:
         """Collect GitHub issues or discussions for the given date.
         post_type: "issue" | "discussion" (discussion not yet implemented).
         """
@@ -55,7 +57,7 @@ class GitHubCollector(ConfigurableResource):
             return await self._collect_discussions(date)
 
         specs = self._generate_specs(date, post_type="issue")
-        responses = await batch_requests(
+        response_pairs = await batch_requests(
             self._client,
             self._context,
             specs,
@@ -63,33 +65,38 @@ class GitHubCollector(ConfigurableResource):
         )
 
         items = []
-
-        for resp in responses:
+        for _, resp in response_pairs:
+            if resp is None:
+                continue
             for it in resp.json().get("items", []):
-                url = it.get("html_url")
+                url = it.get("html_url") or ""
+                parts = url.split("/")
                 items.append(
-                    {
-                        "url": url,
-                        "title": it.get("title"),
-                        "body": it.get("body"),
-                        "created_at": it.get("created_at"),
-                        "source_post_id": str(it.get("id")),
-                        "comment_count": it.get("comments", 0),
-                        "vote_count": 0,
-                        "post_type": "issue",
-                        "reaction_count": it.get("reactions", {}).get("total_count", 0)
+                    RawItem(
+                        url=url,
+                        title=it.get("title") or "",
+                        body=it.get("body") or "",
+                        created_at=it.get("created_at") or "",
+                        source_post_id=str(it.get("id")),
+                        comment_count=it.get("comments", 0),
+                        vote_count=0,
+                        post_type="issue",
+                        reaction_count=it.get("reactions", {}).get("total_count", 0)
                         or 0,
-                        "org_name": url.split("/")[3],
-                        "product_name": url.split("/")[4],
-                    }
+                        org_name=parts[3] if len(parts) > 3 else "",
+                        product_name=parts[4] if len(parts) > 4 else "",
+                    )
                 )
 
+        ok_count = sum(1 for _, r in response_pairs if r is not None)
         log = getattr(getattr(self, "_context", None), "log", None)
         if log is not None:
-            log.info(f"GitHub issues: {len(responses)} requests, {len(items)} items")
-        return items, {"requests": len(responses)}
+            log.info(
+                f"GitHub issues: {ok_count}/{len(response_pairs)} requests ok, {len(items)} items"
+            )
+        return items, {"requests": len(response_pairs), "ok": ok_count}
 
-    async def _collect_discussions(self, date: str) -> Tuple[List[Dict], Dict]:
+    async def _collect_discussions(self, date: str) -> Tuple[List[RawItem], Dict]:
         """Collect GitHub discussions. Stub: not yet implemented."""
         log = getattr(getattr(self, "_context", None), "log", None)
         if log is not None:

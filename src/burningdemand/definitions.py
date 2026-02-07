@@ -9,8 +9,6 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path, override=True)
 
-from burningdemand.utils.config import config
-
 # Import assets directly
 from .assets import (
     raw_gh_issues,
@@ -53,7 +51,7 @@ defs = Definitions(
     assets=all_assets,
     resources={
         "db": DuckDBResource(),
-        "embedding": EmbeddingResource(model_name=config.embeddings.model),
+        "embedding": EmbeddingResource(),
         "collector": CollectorsResource(
             github_collector=GitHubCollector(github_token=EnvVar("GITHUB_TOKEN")),
             stackoverflow_collector=StackOverflowCollector(

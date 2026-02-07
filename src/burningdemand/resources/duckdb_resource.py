@@ -1,75 +1,73 @@
 import duckdb
 import pandas as pd
 from pathlib import Path
+from typing import Any, Optional
+
 from dagster import ConfigurableResource
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 
 class DuckDBResource(ConfigurableResource):
     db_path: str = Field(default="./data/burningdemand.duckdb")
     schema_path: str = Field(default="src/burningdemand/schema/duckdb.sql")
 
+    _conn: Optional[Any] = PrivateAttr(default=None)
+
     def _get_conn(self):
-        """Internal helper to ensure path exists and get connection."""
+        """Create a new connection (used when no run-scoped connection is set)."""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         return duckdb.connect(self.db_path)
 
+    def _conn_or_new(self):
+        """Use run-scoped connection if set, otherwise open a new one (fallback)."""
+        if self._conn is not None:
+            return self._conn
+        return self._get_conn()
+
     def setup_for_execution(self, context) -> None:
-        """
-        Initializes the database by creating schemas and running the SQL script.
-        """
-        with self._get_conn() as conn:
-            # 1. Ensure schemas exist first
-            for schema in ["bronze", "silver", "gold"]:
-                conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
+        """Open one connection for the run and ensure schema exists."""
+        self._conn = self._get_conn()
+        conn = self._conn
+        for schema in ["bronze", "silver", "gold"]:
+            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
+        schema_file = Path(self.schema_path)
+        if not schema_file.exists():
+            raise FileNotFoundError(f"Schema file missing: {schema_file}")
+        conn.execute(schema_file.read_text())
 
-            # 2. Run the main schema SQL
-            schema_file = Path(self.schema_path)
-            if not schema_file.exists():
-                raise FileNotFoundError(f"Schema file missing: {schema_file}")
-
-            # Use execute on the full text of the SQL file
-            conn.execute(schema_file.read_text())
+    def teardown_after_execution(self, context) -> None:
+        """Close the run-scoped connection."""
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     def query_df(self, sql: str, params=None) -> pd.DataFrame:
-        with self._get_conn() as conn:
-            return conn.execute(sql, params or []).df()
+        conn = self._conn_or_new()
+        return conn.execute(sql, params or []).df()
 
     def execute(self, sql: str, params=None) -> None:
-        with self._get_conn() as conn:
-            conn.execute(sql, params or [])
+        conn = self._conn_or_new()
+        conn.execute(sql, params or [])
 
     def upsert_df(
         self, schema: str, table: str, df: pd.DataFrame, columns: list[str]
     ) -> int:
-        """
-        Uses DuckDB's native 'INSERT OR REPLACE' into a specific schema.table.
-        Assumes the table has a PRIMARY KEY defined in your schema.sql.
-        """
         if df is None or df.empty:
             return 0
-
-        # Construct full table path (e.g., bronze.items)
         full_table_path = f"{schema}.{table}"
-
-        # Filter DF to requested columns and prepare SQL string
         upsert_data = df[columns].copy()
-        # DuckDB does not recognize pandas 'string' / 'string[pyarrow]' dtype; use object so it maps to VARCHAR
         for col in upsert_data.columns:
             if pd.api.types.is_string_dtype(upsert_data[col]):
                 upsert_data[col] = upsert_data[col].astype(object)
         cols_str = ", ".join(columns)
-
-        with self._get_conn() as conn:
-            # Register the dataframe as a temporary view
-            conn.register("tmp_df_view", upsert_data)
-
-            # Native UPSERT: Replaces rows with matching Primary Keys
-            # Specifying (columns) ensures we don't hit "count mismatch" errors
-            query = f"""
-                INSERT OR REPLACE INTO {full_table_path} ({cols_str}) 
-                SELECT {cols_str} FROM tmp_df_view
-            """
-            conn.execute(query)
-
+        conn = self._conn_or_new()
+        conn.register("tmp_df_view", upsert_data)
+        query = f"""
+            INSERT OR REPLACE INTO {full_table_path} ({cols_str})
+            SELECT {cols_str} FROM tmp_df_view
+        """
+        conn.execute(query)
         return len(df)

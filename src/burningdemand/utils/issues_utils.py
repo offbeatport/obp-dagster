@@ -4,7 +4,6 @@ Helpers for the issues asset: cluster queries, LLM labeling, and DB writes.
 
 import asyncio
 import logging
-from pprint import pprint
 from typing import Dict, List, Tuple
 
 log = logging.getLogger(__name__)
@@ -85,12 +84,17 @@ def prepare_clusters(
             embeddings_array,
             max_representatives_count=config.labeling.max_representatives_for_labeling,
             max_snippets_count=config.labeling.max_snippets_for_labeling,
-            max_body_length=config.labeling.max_body_weight,
+            max_body_length=config.labeling.max_body_length_for_snippet,
         )
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
 
     return titles_by_cluster, snippets_by_cluster
+
+
+# Retry for transient LLM API errors
+LLM_RETRY_ATTEMPTS = 3
+LLM_RETRY_BACKOFF_SEC = [1.0, 2.0, 4.0]
 
 
 async def label_cluster_with_llm(
@@ -105,41 +109,54 @@ async def label_cluster_with_llm(
     failed: List[dict],
     errors: List[str],
 ) -> None:
-    """Label one cluster via LLM. Model from config / env LLM_MODEL."""
+    """Label one cluster via LLM. Retries on transient errors with backoff."""
     async with sem:
-
         prompt = config.build_label_prompt(titles, size, snippets)
         label_data = None
         last_error = None
         model = config.llm.model
 
-        try:
-            response = await acompletion(
-                model=model,
-                base_url=config.llm.base_url,
-                api_key=config.llm.api_key,
-                messages=[
-                    {"role": "system", "content": config.build_system_prompt()},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=config.llm.max_tokens,
-            )
-            raw = response.choices[0].message.content
-            data = extract_first_json_obj(raw)
-            label = IssueLabel.model_validate(data)
-            label_data = {
-                "canonical_title": label.canonical_title,
-                "category": ",".join(label.category) if label.category else "other",
-                "desc_problem": label.desc_problem or "",
-                "desc_current_solutions": label.desc_current_solutions or "",
-                "desc_impact": label.desc_impact or "",
-                "desc_details": label.desc_details or "",
-                "would_pay_signal": bool(label.would_pay_signal),
-                "impact_level": label.impact_level,
-            }
-        except Exception as e:
-            last_error = e
-            log.warning("cluster_id=%s: %s", cid, e, exc_info=True)
+        for attempt in range(LLM_RETRY_ATTEMPTS):
+            try:
+                response = await acompletion(
+                    model=model,
+                    base_url=config.llm.base_url,
+                    api_key=config.llm.api_key,
+                    messages=[
+                        {"role": "system", "content": config.build_system_prompt()},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=config.llm.max_tokens,
+                )
+                raw = response.choices[0].message.content
+                data = extract_first_json_obj(raw)
+                label = IssueLabel.model_validate(data)
+                label_data = {
+                    "canonical_title": label.canonical_title,
+                    "category": ",".join(label.category) if label.category else "other",
+                    "desc_problem": label.desc_problem or "",
+                    "desc_current_solutions": label.desc_current_solutions or "",
+                    "desc_impact": label.desc_impact or "",
+                    "desc_details": label.desc_details or "",
+                    "would_pay_signal": bool(label.would_pay_signal),
+                    "impact_level": label.impact_level,
+                }
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < LLM_RETRY_ATTEMPTS - 1:
+                    delay = LLM_RETRY_BACKOFF_SEC[attempt]
+                    log.warning(
+                        "cluster_id=%s attempt %s/%s: %s; retrying in %ss",
+                        cid,
+                        attempt + 1,
+                        LLM_RETRY_ATTEMPTS,
+                        e,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    log.warning("cluster_id=%s: %s", cid, e, exc_info=True)
 
         if label_data:
             results.append(
