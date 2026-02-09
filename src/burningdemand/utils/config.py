@@ -70,22 +70,15 @@ class RawGhIssuesAssetConfig(BaseModel):
     queries_per_day: int
     min_reactions: int
     min_comments: int
+    max_comments: int
+    per_page: int
 
 
 class RawGhDiscussionsAssetConfig(BaseModel):
     queries_per_day: int
     min_comments: int
-
-
-# Kept for backward compat; shared GitHub resource may use resources.github (filled from raw_gh_issues in load_config)
-class GitHubCollectorConfig(BaseModel):
-    queries_per_day: int
-    min_reactions: int
-    min_comments: int
-
-
-class ResourcesConfig(BaseModel):
-    github: GitHubCollectorConfig
+    max_comments: int
+    per_page: int
 
 
 class Config(BaseModel):
@@ -98,7 +91,6 @@ class Config(BaseModel):
     issues: IssuesConfig
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
-    resources: ResourcesConfig
     keywords: dict[str, Any]
     prompts: dict[str, Any]
 
@@ -174,11 +166,6 @@ def load_config(config_dir: Path | None = None) -> Config:
         "keywords": _read_yaml(config_dir / "keywords.yaml"),
         "prompts": _read_yaml(config_dir / "prompts.yaml"),
     }
-    # Backward compat: shared GitHub resource uses resources.github; default from raw_gh_issues
-    if "resources" not in data or not data["resources"]:
-        data["resources"] = {"github": data["raw_gh_issues"]}
-    elif "github" not in (data.get("resources") or {}):
-        data.setdefault("resources", {})["github"] = data["raw_gh_issues"]
 
     # Let Pydantic surface any validation errors directly.
     return Config.model_validate(data)

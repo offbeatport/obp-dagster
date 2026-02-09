@@ -10,7 +10,7 @@ from burningdemand.utils.url import normalize_url, url_hash
 
 
 @dataclasses.dataclass
-class RawReaction:
+class RawReactionsGroups:
     type: str = ""
     count: int = 0
 
@@ -19,8 +19,8 @@ class RawReaction:
 class RawComment:
     body: str = ""
     created_at: str = ""
-    votes_count: int = 0
-    reactions: List[RawReaction] = dataclasses.field(default_factory=list)
+    upvotes_count: int = 0
+    reactions: List[RawReactionsGroups] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -34,12 +34,33 @@ class RawItem:
     source_post_id: str = ""
     comments_list: List[RawComment] = dataclasses.field(default_factory=list)
     comments_count: int = 0
-    votes_count: int = 0
+    upvotes_count: int = 0
     post_type: str = "issue"
-    reactions_groups: List[RawReaction] = dataclasses.field(default_factory=list)
+    reactions_groups: List[RawReactionsGroups] = dataclasses.field(default_factory=list)
     reactions_count: int = 0
     org_name: str = ""
     product_name: str = ""
+
+
+# Column order for bronze.raw_items (must match duckdb.sql). Used by to_df() and by upsert when columns=None.
+RAW_ITEMS_TABLE_COLUMNS = [
+    "url",
+    "url_hash",
+    "source",
+    "source_post_id",
+    "post_type",
+    "org_name",
+    "product_name",
+    "title",
+    "body",
+    "upvotes_count",
+    "reactions_groups",
+    "reactions_count",
+    "comments_list",
+    "comments_count",
+    "created_at",
+    "collected_at",
+]
 
 
 class CollectedItems:
@@ -52,7 +73,7 @@ class CollectedItems:
     def to_df(self, source: str, date: str) -> pd.DataFrame:
         """Build a normalized DataFrame for upsert into bronze.raw_items."""
         if not self.items:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=RAW_ITEMS_TABLE_COLUMNS)
 
         df = pd.DataFrame([dataclasses.asdict(i) for i in self.items])
         df["url"] = df["url"].map(normalize_url)
@@ -73,10 +94,13 @@ class CollectedItems:
             df["collected_at"], format="%Y-%m-%d", errors="coerce"
         ).dt.date
         df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
-        df["comments_list"] = df["comments_list"].apply(json.loads)
+        df["comments_list"] = df["comments_list"].apply(
+            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
+        )
         df["comments_count"] = df["comments_count"].fillna(0).astype(int)
-        df["reactions_groups"] = df["reactions_groups"].apply(json.loads)
+        df["reactions_groups"] = df["reactions_groups"].apply(
+            lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
+        )
         df["reactions_count"] = df["reactions_count"].fillna(0).astype(int)
-        df["votes_count"] = df["votes_count"].fillna(0).astype(int)
-        df["reactions_count"] = df["reactions_count"].fillna(0).astype(int)
-        return df
+        df["upvotes_count"] = df["upvotes_count"].fillna(0).astype(int)
+        return df[RAW_ITEMS_TABLE_COLUMNS]

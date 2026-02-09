@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
     product_name        VARCHAR,
     title               VARCHAR,
     body                VARCHAR,
-    votes_count         INTEGER,
+    upvotes_count       INTEGER,
     reactions_groups    JSON,
     reactions_count     INTEGER,
     comments_list       JSON,

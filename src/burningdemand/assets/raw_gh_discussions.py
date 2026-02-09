@@ -22,30 +22,44 @@ async def raw_gh_discussions(
 ) -> MaterializeResult:
 
     date = context.partition_key
+    cfg = config.raw_gh_discussions
 
-    node_fragment = """
-        ... on Discussion {
-            id 
-            number 
+    node_fragment = f"""
+        ... on Discussion {{
+            id              
             url 
             title 
             body 
-            createdAt 
-            repository { nameWithOwner } 
-            comments(last: 100) { 
+            createdAt
+            upvoteCount
+            isAnswered
+            closed
+            answer {{ body }}
+            repository {{
+                name        
+                owner {{ login }}
+            }}
+            comments(last: {cfg.max_comments}) {{
                 totalCount
-                nodes {
+                nodes {{
                     body
                     updatedAt
-                    reactions { totalCount }
-                }
-            } 
-            reactions { totalCount } 
-        }
+                    reactions {{ totalCount }}
+                    reactionGroups {{
+                        content        
+                        reactors {{ totalCount }}
+                    }}
+                }}
+            }} 
+            reactions {{ totalCount }} 
+            reactionGroups {{
+                content        
+                reactors {{ totalCount }}
+            }}
+        }}
     """
 
-    cfg = config.raw_gh_discussions
-    query_suffix = f"comments:>={cfg.min_comments}"
+    query_suffix = f"comments:>={cfg.min_comments} sort:interactions-desc"
 
     raw_items, meta = await github.search(
         date,
@@ -53,8 +67,44 @@ async def raw_gh_discussions(
         query_suffix=query_suffix,
         type="DISCUSSION",
         hour_splits=cfg.queries_per_day,
+        per_page=cfg.per_page,
     )
 
     items = [item for item in (gh_to_raw_item(d, "discussion") for d in raw_items)]
 
     return await materialize_raw(db, items, meta, "gh_discussions", date)
+
+    # node_fragment = f"""
+    #     ... on Discussion {{
+    #         id
+    #         url
+    #         title
+    #         body
+    #         createdAt
+    #         upvoteCount
+    #         isAnswered
+    #         closed
+    #         answer {{ body }}
+    #         repository {{
+    #             name
+    #             owner {{ login }}
+    #         }}
+    #         comments(last: {cfg}) {{
+    #             totalCount
+    #             nodes {{
+    #                 body
+    #                 updatedAt
+    #                 reactions {{ totalCount }}
+    #                 reactionGroups {{
+    #                     content
+    #                     reactors {{ totalCount }}
+    #                 }}
+    #             }}
+    #         }}
+    #         reactions {{ totalCount }}
+    #         reactionGroups {{
+    #             content
+    #             reactors {{ totalCount }}
+    #         }}
+    #     }}
+    # """

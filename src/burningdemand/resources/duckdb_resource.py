@@ -67,10 +67,16 @@ class DuckDBResource(ConfigurableResource):
         conn.execute(sql, params or [])
 
     def upsert_df(
-        self, schema: str, table: str, df: pd.DataFrame, columns: list[str]
+        self,
+        schema: str,
+        table: str,
+        df: pd.DataFrame,
+        columns: list[str] | None = None,
     ) -> int:
         if df is None or df.empty:
             return 0
+        if columns is None:
+            columns = list(df.columns)
         full_table_path = f"{schema}.{table}"
         upsert_data = df[columns].copy()
         for col in upsert_data.columns:

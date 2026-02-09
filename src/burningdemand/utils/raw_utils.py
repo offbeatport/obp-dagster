@@ -7,23 +7,6 @@ from dagster import MaterializeResult
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.schema.raw_items import CollectedItems, RawItem
 
-UPSERT_COLUMNS = [
-    "source",
-    "source_post_id",
-    "post_type",
-    "url_hash",
-    "url",
-    "title",
-    "body",
-    "created_at",
-    "comments_list",
-    "comments_count",
-    "votes_count",
-    "org_name",
-    "product_name",
-    "reactions_count",
-]
-
 
 def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     """Convert GitHub REST item or GraphQL node to RawItem."""
@@ -50,7 +33,7 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         source_post_id=source_id,
         comments_list=[],
         comments_count=comment_count,
-        votes_count=0,
+        upvotes_count=0,
         post_type=post_type,
         reactions_count=reaction_count,
         org_name=org,
@@ -78,7 +61,7 @@ async def materialize_raw(
         )
     collected = CollectedItems(items, meta)
     df = collected.to_df(source, date)
-    inserted_attempt = db.upsert_df("bronze", "raw_items", df, UPSERT_COLUMNS)
+    inserted_attempt = db.upsert_df("bronze", "raw_items", df)
     return MaterializeResult(
         metadata={
             "source": source,

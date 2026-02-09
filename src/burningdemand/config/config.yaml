@@ -1,11 +1,31 @@
 raw_gh_issues:
-  queries_per_day: 3
-  min_reactions: 10
-  min_comments: 10
+  # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  queries_per_day: 4
+
+  # Only return issues with at least this many reactions
+  min_reactions: 1
+
+  # Only return issues with at least this many comments
+  min_comments: 1
+
+  # Number of comments to fetch per issue
+  max_comments: 20
+
+  # Number of issues to fetch per request
+  per_page: 50
 
 raw_gh_discussions:
+  # Number of queries to make per day (each query is a day split into queries_per_day hours)
   queries_per_day: 3
+
+  # Only return discussions with at least this many comments
   min_comments: 1
+
+  # Number of comments to fetch per discussion
+  max_comments: 20
+
+  # Number of discussions to fetch per request
+  per_page: 50
 
 issues:
   llm_concurrency_per_issues_partition: 8

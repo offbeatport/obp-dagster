@@ -3,10 +3,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from githubkit import GitHub
+from githubkit.exception import GraphQLFailed
 
 from dagster import ConfigurableResource, EnvVar
 
-from burningdemand.utils.config import config
 from burningdemand.utils.date_ranges import split_day_into_ranges
 
 
@@ -18,7 +18,6 @@ class GitHubResource(ConfigurableResource):
         self._gh = GitHub(
             self.github_token, user_agent="BurningDemand/0.1", timeout=30.0
         )
-        self._cfg = config.resources.github
 
     def teardown_after_execution(self, context) -> None:
         self._gh = None
@@ -35,6 +34,7 @@ class GitHubResource(ConfigurableResource):
         type: str = "ISSUE",
         query_suffix: str = "",
         hour_splits: int = 2,
+        per_page: int = 100,
     ) -> Tuple[List[Dict[str, Any]], Dict]:
         """GraphQL search: return raw nodes with the provided fragment."""
 
@@ -71,9 +71,22 @@ class GitHubResource(ConfigurableResource):
                 end_z,
             )
             while True:
-                root = await self._gh.graphql.arequest(
-                    gql_query, {"queryStr": query_str, "first": 100, "after": cursor}
-                )
+                try:
+                    root = await self._gh.graphql.arequest(
+                        gql_query,
+                        {"queryStr": query_str, "first": per_page, "after": cursor},
+                    )
+                except GraphQLFailed as e:
+                    self.log.error(
+                        "GitHub GraphQL failed (range %s/%s %s..%s, page %s): %s",
+                        range_idx,
+                        total_ranges,
+                        start_z,
+                        end_z,
+                        page_in_range + 1,
+                        e.response.errors,
+                    )
+                    raise
                 n_requests += 1
                 page_in_range += 1
                 search = root.get("search")
