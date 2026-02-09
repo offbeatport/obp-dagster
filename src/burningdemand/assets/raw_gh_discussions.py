@@ -20,7 +20,9 @@ async def raw_gh_discussions(
     db: DuckDBResource,
     github: GitHubResource,
 ) -> MaterializeResult:
+
     date = context.partition_key
+
     node_fragment = """
         ... on Discussion {
             id 
@@ -30,21 +32,29 @@ async def raw_gh_discussions(
             body 
             createdAt 
             repository { nameWithOwner } 
-            comments { totalCount } 
+            comments(last: 100) { 
+                totalCount
+                nodes {
+                    body
+                    updatedAt
+                    reactions { totalCount }
+                }
+            } 
             reactions { totalCount } 
         }
-"""
-    query_suffix = ""
-    # query_suffix = f"is:discussion comments:>={config.resources.github.min_comments} reactions:>={config.resources.github.min_reactions}"
+    """
+
+    cfg = config.raw_gh_discussions
+    query_suffix = f"comments:>={cfg.min_comments}"
+
     raw_items, meta = await github.search(
         date,
         node_fragment,
         query_suffix=query_suffix,
         type="DISCUSSION",
-        hour_splits=config.resources.github.queries_per_day,
+        hour_splits=cfg.queries_per_day,
     )
-    max_body = config.labeling.max_body_length_for_snippet
-    items = [
-        item for item in (gh_to_raw_item(d, "discussion", max_body) for d in raw_items)
-    ]
+
+    items = [item for item in (gh_to_raw_item(d, "discussion") for d in raw_items)]
+
     return await materialize_raw(db, items, meta, "gh_discussions", date)

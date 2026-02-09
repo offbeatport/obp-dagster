@@ -36,7 +36,7 @@ def embeddings(
         f"""
         SELECT b.url_hash, b.title, b.body
         FROM bronze.raw_items b
-        WHERE b.collection_date = ?
+        WHERE b.created_at = ?
         """,
         [date],
     )

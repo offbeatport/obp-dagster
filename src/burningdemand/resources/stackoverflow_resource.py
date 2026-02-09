@@ -97,7 +97,7 @@ class StackOverflowResource(ConfigurableResource):
                             url=it.get("link") or "",
                             title=title,
                             body=body[
-                                : config.labeling.max_body_length_for_snippet
+                                : config.issues.labeling.max_body_length_for_snippet
                             ],
                             created_at=(
                                 datetime.fromtimestamp(
@@ -107,10 +107,11 @@ class StackOverflowResource(ConfigurableResource):
                                 else ""
                             ),
                             source_post_id=str(it.get("question_id") or ""),
-                            comment_count=it.get("answer_count", 0) or 0,
+                            comments_list=[],
+                            comments_count=it.get("answer_count", 0) or 0,
                             vote_count=it.get("score", 0) or 0,
                             post_type="question",
-                            reaction_count=0,
+                            reactions_count=0,
                             org_name="",
                             product_name="",
                         )

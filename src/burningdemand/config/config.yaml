@@ -1,29 +1,24 @@
-resources:
-  github:
-    # Split each day into N time-window queries (GitHub search caps at 1000 results per query)
-    queries_per_day: 3
-    # Minimum number of reactions an issue must have to be included in the search query
-    min_reactions: 1
-    # Minimum number of comments an issue must have to be included in the search query
-    min_comments: 1
+raw_gh_issues:
+  queries_per_day: 3
+  min_reactions: 10
+  min_comments: 10
 
-llm:
-  # Default LLM model for cluster labeling (can be overridden with LLM_MODEL env var)
-  model: "gpt-5-mini"
-  # Base URL for the LLM API (override with LLM_BASE_URL)
-  base_url: "https://llm.offbeatport.com"
-  # Maximum tokens for responses
-  max_tokens: 2000
-
-labeling:
-  # How much cluster content we send to the LLM
-  max_representatives_for_labeling: 10
-  max_snippets_for_labeling: 5
-  max_body_length_for_snippet: 500
+raw_gh_discussions:
+  queries_per_day: 3
+  min_comments: 1
 
 issues:
-  # Concurrent LLM calls per issues partition
   llm_concurrency_per_issues_partition: 8
+  # How much cluster content we send to the LLM (labeling)
+  labeling:
+    max_representatives_for_labeling: 10
+    max_snippets_for_labeling: 5
+    max_body_length_for_snippet: 500
+  # LLM for cluster labeling (can be overridden with LLM_MODEL env var)
+  llm:
+    model: "gpt-5-mini"
+    base_url: "https://llm.offbeatport.com"
+    max_tokens: 2000
 
 embeddings:
   # Default embedding model (override with EMBEDDING_MODEL env var)
@@ -43,18 +38,5 @@ clustering:
   min_samples_divisor: 4
   metric: "euclidean"
   selection_method: "eom"
-
-  # # Number of days of embeddings to include when clustering (window_end = partition date)
-  # rolling_window_days: 7
-  # # min_cluster_size = max(min_cluster_size_floor, n // min_cluster_size_divisor)
-  # min_cluster_size_floor: 12
-  # min_cluster_size_divisor: 200
-  # # min_samples = max(min_samples_floor, min_cluster_size // min_samples_divisor)
-  # min_samples_floor: 3
-  # min_samples_divisor: 2
-  # metric: "euclidean"
-  # selection_method: "eom"
-
-representatives:
-  # Jaccard similarity threshold for title diversity
-  diversity_threshold: 0.8
+  representatives:
+    diversity_threshold: 0.8

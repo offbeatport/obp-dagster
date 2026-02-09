@@ -110,15 +110,16 @@ class RedditResource(ConfigurableResource):
                             RawItem(
                                 url=f"https://reddit.com{d.get('permalink','')}",
                                 title=title,
-                                body=body[: config.labeling.max_body_length_for_snippet],
+                                body=body[: config.issues.labeling.max_body_length_for_snippet],
                                 created_at=datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
                                 source_post_id=str(d.get("id") or ""),
-                                comment_count=d.get("num_comments", 0) or 0,
+                                comments_list=[],
+                                comments_count=d.get("num_comments", 0) or 0,
                                 vote_count=d.get("score", 0) or 0,
                                 post_type="post",
-                                reaction_count=0,
+                                reactions_count=0,
                                 org_name="",
                                 product_name="",
                             )

@@ -82,9 +82,9 @@ def prepare_clusters(
         titles, snippets = get_cluster_representatives(
             cluster_items,
             embeddings_array,
-            max_representatives_count=config.labeling.max_representatives_for_labeling,
-            max_snippets_count=config.labeling.max_snippets_for_labeling,
-            max_body_length=config.labeling.max_body_length_for_snippet,
+            max_representatives_count=config.issues.labeling.max_representatives_for_labeling,
+            max_snippets_count=config.issues.labeling.max_snippets_for_labeling,
+            max_body_length=config.issues.labeling.max_body_length_for_snippet,
         )
         titles_by_cluster[cid] = titles
         snippets_by_cluster[cid] = snippets
@@ -114,19 +114,19 @@ async def label_cluster_with_llm(
         prompt = config.build_label_prompt(titles, size, snippets)
         label_data = None
         last_error = None
-        model = config.llm.model
+        model = config.issues.llm.model
 
         for attempt in range(LLM_RETRY_ATTEMPTS):
             try:
                 response = await acompletion(
                     model=model,
-                    base_url=config.llm.base_url,
-                    api_key=config.llm.api_key,
+                    base_url=config.issues.llm.base_url,
+                    api_key=config.issues.llm.api_key,
                     messages=[
                         {"role": "system", "content": config.build_system_prompt()},
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=config.llm.max_tokens,
+                    max_tokens=config.issues.llm.max_tokens,
                 )
                 raw = response.choices[0].message.content
                 data = extract_first_json_obj(raw)

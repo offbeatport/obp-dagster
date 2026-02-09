@@ -5,7 +5,7 @@ Use the shared config singleton everywhere:
 
     from burningdemand.config import config
 
-    config.llm.model
+    config.issues.llm.model
     config.embeddings.model
     config.build_system_prompt()
     config.build_label_prompt(titles, size, snippets)

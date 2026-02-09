@@ -41,12 +41,18 @@ class LabelingConfig(BaseModel):
 
 class IssuesConfig(BaseModel):
     llm_concurrency_per_issues_partition: int
+    labeling: LabelingConfig
+    llm: LlmConfig
 
 
 class EmbeddingConfig(BaseModel):
     model: str
     encode_batch_size: int
     asset_batch_size: int
+
+
+class RepresentativesConfig(BaseModel):
+    diversity_threshold: float
 
 
 class ClusteringConfig(BaseModel):
@@ -57,12 +63,21 @@ class ClusteringConfig(BaseModel):
     min_samples_divisor: int
     metric: str
     selection_method: str
+    representatives: RepresentativesConfig
 
 
-class RepresentativesConfig(BaseModel):
-    diversity_threshold: float
+class RawGhIssuesAssetConfig(BaseModel):
+    queries_per_day: int
+    min_reactions: int
+    min_comments: int
 
 
+class RawGhDiscussionsAssetConfig(BaseModel):
+    queries_per_day: int
+    min_comments: int
+
+
+# Kept for backward compat; shared GitHub resource may use resources.github (filled from raw_gh_issues in load_config)
 class GitHubCollectorConfig(BaseModel):
     queries_per_day: int
     min_reactions: int
@@ -77,12 +92,12 @@ class Config(BaseModel):
     # Forbid unknown keys in scalar config; safer during refactors.
     model_config = ConfigDict(extra="forbid")
 
-    llm: LlmConfig
-    labeling: LabelingConfig
+    # Root-level keys matching config.yaml (asset names + section names)
+    raw_gh_issues: RawGhIssuesAssetConfig
+    raw_gh_discussions: RawGhDiscussionsAssetConfig
     issues: IssuesConfig
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
-    representatives: RepresentativesConfig
     resources: ResourcesConfig
     keywords: dict[str, Any]
     prompts: dict[str, Any]
@@ -159,6 +174,11 @@ def load_config(config_dir: Path | None = None) -> Config:
         "keywords": _read_yaml(config_dir / "keywords.yaml"),
         "prompts": _read_yaml(config_dir / "prompts.yaml"),
     }
+    # Backward compat: shared GitHub resource uses resources.github; default from raw_gh_issues
+    if "resources" not in data or not data["resources"]:
+        data["resources"] = {"github": data["raw_gh_issues"]}
+    elif "github" not in (data.get("resources") or {}):
+        data.setdefault("resources", {})["github"] = data["raw_gh_issues"]
 
     # Let Pydantic surface any validation errors directly.
     return Config.model_validate(data)
@@ -174,6 +194,8 @@ __all__ = [
     "EmbeddingConfig",
     "ClusteringConfig",
     "RepresentativesConfig",
+    "RawGhDiscussionsAssetConfig",
+    "RawGhIssuesAssetConfig",
     "load_config",
     "config",
 ]

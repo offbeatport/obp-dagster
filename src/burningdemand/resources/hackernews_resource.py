@@ -86,7 +86,7 @@ class HackerNewsResource(ConfigurableResource):
                             or f"https://news.ycombinator.com/item?id={it.get('objectID')}",
                             title=title,
                             body=body[
-                                : config.labeling.max_body_length_for_snippet
+                                : config.issues.labeling.max_body_length_for_snippet
                             ],
                             created_at=(
                                 datetime.fromtimestamp(
@@ -96,10 +96,11 @@ class HackerNewsResource(ConfigurableResource):
                                 else ""
                             ),
                             source_post_id=str(it.get("objectID") or ""),
-                            comment_count=it.get("num_comments", 0) or 0,
+                            comments_list=[],
+                            comments_count=it.get("num_comments", 0) or 0,
                             vote_count=it.get("points", 0) or 0,
                             post_type="story",
-                            reaction_count=0,
+                            reactions_count=0,
                             org_name="",
                             product_name="",
                         )

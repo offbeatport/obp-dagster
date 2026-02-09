@@ -1,11 +1,26 @@
 """Schema for raw collected items: RawItem and CollectedItems (bronze.raw_items)."""
 
 import dataclasses
+import json
 from typing import Any, Dict, List
 
 import pandas as pd
 
 from burningdemand.utils.url import normalize_url, url_hash
+
+
+@dataclasses.dataclass
+class RawReaction:
+    type: str = ""
+    count: int = 0
+
+
+@dataclasses.dataclass
+class RawComment:
+    body: str = ""
+    created_at: str = ""
+    votes_count: int = 0
+    reactions: List[RawReaction] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -17,31 +32,14 @@ class RawItem:
     body: str = ""
     created_at: str = ""
     source_post_id: str = ""
-    comment_count: int = 0
-    vote_count: int = 0
+    comments_list: List[RawComment] = dataclasses.field(default_factory=list)
+    comments_count: int = 0
+    votes_count: int = 0
     post_type: str = "issue"
-    reaction_count: int = 0
+    reactions_groups: List[RawReaction] = dataclasses.field(default_factory=list)
+    reactions_count: int = 0
     org_name: str = ""
     product_name: str = ""
-
-
-# Column order matching bronze.raw_items (RawItem fields + url_hash, source, collection_date)
-_TO_DF_COLUMNS = [
-    "url",
-    "title",
-    "body",
-    "created_at",
-    "source_post_id",
-    "comment_count",
-    "vote_count",
-    "post_type",
-    "reaction_count",
-    "org_name",
-    "product_name",
-    "url_hash",
-    "source",
-    "collection_date",
-]
 
 
 class CollectedItems:
@@ -52,17 +50,15 @@ class CollectedItems:
         self.meta = meta
 
     def to_df(self, source: str, date: str) -> pd.DataFrame:
-        """Build a normalized DataFrame for upsert into bronze.raw_items.
-        Returns an empty DataFrame with correct columns when there are no items.
-        """
+        """Build a normalized DataFrame for upsert into bronze.raw_items."""
         if not self.items:
-            return pd.DataFrame(columns=_TO_DF_COLUMNS)
+            return pd.DataFrame()
 
         df = pd.DataFrame([dataclasses.asdict(i) for i in self.items])
         df["url"] = df["url"].map(normalize_url)
         df["url_hash"] = df["url"].map(url_hash)
         df["source"] = source
-        df["collection_date"] = date
+        df["collected_at"] = date
 
         df["title"] = df["title"].fillna("").astype("object")
         df["body"] = df["body"].fillna("").astype("object")
@@ -73,11 +69,14 @@ class CollectedItems:
         df["org_name"] = df["org_name"].fillna("").astype("object")
         df["product_name"] = df["product_name"].fillna("").astype("object")
         df["post_type"] = df["post_type"].fillna("issue").astype("object")
-        df["collection_date"] = pd.to_datetime(
-            df["collection_date"], format="%Y-%m-%d", errors="coerce"
+        df["collected_at"] = pd.to_datetime(
+            df["collected_at"], format="%Y-%m-%d", errors="coerce"
         ).dt.date
         df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
-        df["comment_count"] = df["comment_count"].fillna(0).astype(int)
-        df["vote_count"] = df["vote_count"].fillna(0).astype(int)
-        df["reaction_count"] = df["reaction_count"].fillna(0).astype(int)
+        df["comments_list"] = df["comments_list"].apply(json.loads)
+        df["comments_count"] = df["comments_count"].fillna(0).astype(int)
+        df["reactions_groups"] = df["reactions_groups"].apply(json.loads)
+        df["reactions_count"] = df["reactions_count"].fillna(0).astype(int)
+        df["votes_count"] = df["votes_count"].fillna(0).astype(int)
+        df["reactions_count"] = df["reactions_count"].fillna(0).astype(int)
         return df

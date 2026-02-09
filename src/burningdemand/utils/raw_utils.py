@@ -1,6 +1,6 @@
 """Shared helpers for raw assets (bronze.raw_items)."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from dagster import MaterializeResult
 
@@ -12,25 +12,25 @@ UPSERT_COLUMNS = [
     "source_post_id",
     "post_type",
     "url_hash",
-    "collection_date",
     "url",
     "title",
     "body",
     "created_at",
-    "comment_count",
-    "vote_count",
+    "comments_list",
+    "comments_count",
+    "votes_count",
     "org_name",
     "product_name",
-    "reaction_count",
+    "reactions_count",
 ]
 
 
-def gh_to_raw_item(d: Dict[str, Any], post_type: str, max_body: int) -> RawItem:
+def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     """Convert GitHub REST item or GraphQL node to RawItem."""
     url = d.get("url") or d.get("html_url") or ""
     parts = url.rstrip("/").replace("https://github.com/", "").split("/")[:2]
     org, product = (parts + ["", ""])[:2]
-    body = (d.get("body") or "")[:max_body]
+    body = d.get("body") or ""
     created = d.get("createdAt") or d.get("created_at") or ""
     sid = d.get("databaseId") or d.get("number") or d.get("id")
     source_id = str(sid) if sid is not None else ""
@@ -48,10 +48,11 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str, max_body: int) -> RawItem:
         body=body,
         created_at=created,
         source_post_id=source_id,
-        comment_count=comment_count,
-        vote_count=0,
+        comments_list=[],
+        comments_count=comment_count,
+        votes_count=0,
         post_type=post_type,
-        reaction_count=reaction_count,
+        reactions_count=reaction_count,
         org_name=org,
         product_name=product,
     )

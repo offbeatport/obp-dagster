@@ -47,7 +47,7 @@ def select_representatives(
         return pd.DataFrame()
 
     if diversity_threshold is None:
-        diversity_threshold = config.representatives.diversity_threshold
+        diversity_threshold = config.clustering.representatives.diversity_threshold
 
     # Compute centroid
     centroid = np.mean(embeddings_array, axis=0)
