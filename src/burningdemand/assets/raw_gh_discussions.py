@@ -23,11 +23,14 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     license_info = repository.get("licenseInfo") or {}
     license_name = license_info.get("spdxId") or ""
 
-    comments_list = parse_github_comments_list(d.get("comments"))
-    comments_count = d.get("comments").get("totalCount") or 0
+    comments = d.get("comments") or {}
+    reviews = d.get("reviews") or {}
 
-    reviews_list = parse_github_comments_list(d.get("reviews"))
-    reviews_count = d.get("reviews").get("totalCount") or 0
+    comments_list = parse_github_comments_list(comments)
+    comments_count = comments.get("totalCount") or 0
+
+    reviews_list = parse_github_comments_list(reviews)
+    reviews_count = reviews.get("totalCount") or 0
 
     return RawItem(
         url=d.get("url"),

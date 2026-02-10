@@ -58,7 +58,7 @@ def embeddings(
 
     items = db.query_df(
         f"""
-        SELECT b.url_hash, b.title, b.body, b.license
+        SELECT *
         FROM bronze.raw_items b
         WHERE CAST(b.created_at AS DATE) = ?
         """,
@@ -66,6 +66,8 @@ def embeddings(
     )
 
     items = _apply_hard_filter(context, items)
+    print(items)
+    exit()
 
     if len(items) == 0:
         context.log.info(f"No new items to process for {date}")
