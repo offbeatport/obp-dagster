@@ -1,7 +1,6 @@
 """Raw GitHub issues asset."""
 
 from typing import Any, Dict, List
-import pprint
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
@@ -28,7 +27,11 @@ def _parse_reaction_groups(groups: List[Dict[str, Any]]) -> List[RawReactionsGro
 
 def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     """Convert GitHub GQL node to RawItem."""
-    org, product = d.get("repository").get("nameWithOwner").split("/")
+    repository = d.get("repository") or {}
+    name_with_owner = repository.get("nameWithOwner") or ""
+    org, product = (name_with_owner.split("/", 1) + [""])[:2]
+    license_info = repository.get("licenseInfo") or {}
+    license_name = license_info.get("spdxId") or ""
 
     return RawItem(
         url=d.get("url"),
@@ -36,6 +39,10 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         body=d.get("body") or "",
         org_name=org,
         product_name=product,
+        product_desc=repository.get("description") or "",
+        product_stars=repository.get("stargazerCount") or 0,
+        product_forks=repository.get("forkCount") or 0,
+        product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
         comments_list=[
             RawComment(
                 body=(c.get("body") or ""),
@@ -52,6 +59,7 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
         source_post_id=str(d.get("id")) or "",
         created_at=d.get("createdAt") or "",
+        license=license_name,
     )
 
 
@@ -103,7 +111,14 @@ async def raw_gh_issues(
     node_fragment = f"""
         ... on Issue {{  
             id databaseId url title body createdAt 
-            repository {{ nameWithOwner }} 
+            repository {{ 
+                nameWithOwner
+                description
+                licenseInfo {{ spdxId }}
+                stargazerCount
+                forkCount
+                watchers {{ totalCount }}
+            }} 
             comments(last: {cfg.max_comments}) {{
                 totalCount 
                 nodes {{

@@ -1,6 +1,5 @@
 # burningdemand_dagster/assets/embeddings.py
 import pandas as pd
-import numpy as np
 from dagster import (
     AssetExecutionContext,
     AutomationCondition,
@@ -12,13 +11,43 @@ from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.embedding_resource import EmbeddingResource
-from dagster import Config
+
+
+def _apply_hard_filter(
+    context: AssetExecutionContext,
+    items: pd.DataFrame,
+) -> tuple[pd.DataFrame, int, int]:
+    """Drop rows that fail hard constraints for embeddings."""
+    input_count = len(items)
+    license_mask = items["license"].fillna("").astype(str).str.strip() != ""
+    filtered_out = int((~license_mask).sum())
+    filtered_items = items[license_mask].copy()
+
+    context.log.info(
+        "Hard filter: filtered out %s/%s items (missing license)",
+        filtered_out,
+        input_count,
+    )
+
+    if len(items) == 0:
+        context.log.info("No items left after hard filter")
+
+    return filtered_items
 
 
 @asset(
     partitions_def=daily_partitions,
     group_name="silver",
-    deps=["raw_gh_issues", "raw_gh_discussions", "raw_rd", "raw_so", "raw_hn"],
+    deps=[
+        "raw_gh_issues",
+        "raw_gh_discussions",
+        "raw_gh_pull_requests",
+        "raw_gh_repositories",
+        "raw_gh_pr_reviews",
+        "raw_rd",
+        "raw_so",
+        "raw_hn",
+    ],
     automation_condition=AutomationCondition.eager()
     .without(AutomationCondition.in_latest_time_window())
     .without(~AutomationCondition.any_deps_missing())
@@ -34,12 +63,14 @@ def embeddings(
 
     items = db.query_df(
         f"""
-        SELECT b.url_hash, b.title, b.body
+        SELECT b.url_hash, b.title, b.body, b.license
         FROM bronze.raw_items b
-        WHERE b.created_at = ?
+        WHERE CAST(b.created_at AS DATE) = ?
         """,
         [date],
     )
+
+    items = _apply_hard_filter(context, items)
 
     if len(items) == 0:
         context.log.info(f"No new items to process for {date}")
@@ -105,5 +136,10 @@ def embeddings(
         )
 
     return MaterializeResult(
-        metadata={"embeddings": int(total), "batch_size": int(batch_size)}
+        metadata={
+            "embeddings": int(total),
+            "batch_size": int(batch_size),
+            "hard_filtered_out": int(hard_filtered_out),
+            "hard_filter_input": int(before_hard_filter),
+        }
     )

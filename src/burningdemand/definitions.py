@@ -13,6 +13,9 @@ if env_path.exists():
 from .assets import (
     raw_gh_issues,
     raw_gh_discussions,
+    raw_gh_pr_reviews,
+    raw_gh_pull_requests,
+    raw_gh_repositories,
     raw_rd,
     raw_so,
     raw_hn,
@@ -36,6 +39,9 @@ from .resources.stackoverflow_resource import StackOverflowResource
 all_assets = [
     raw_gh_issues,
     raw_gh_discussions,
+    raw_gh_pr_reviews,
+    raw_gh_pull_requests,
+    raw_gh_repositories,
     raw_rd,
     raw_so,
     raw_hn,

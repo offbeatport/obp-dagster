@@ -27,6 +27,42 @@ raw_gh_discussions:
   # Number of discussions to fetch per request
   per_page: 50
 
+raw_gh_pull_requests:
+  # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  queries_per_day: 4
+
+  # Only return pull requests with at least this many comments
+  min_comments: 1
+
+  # Number of comments to fetch per pull request
+  max_comments: 20
+
+  # Number of pull requests to fetch per request
+  per_page: 50
+
+raw_gh_repositories:
+  # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  queries_per_day: 2
+
+  # Only return repositories with at least this many stars
+  min_stars: 10
+
+  # Number of repositories to fetch per request
+  per_page: 50
+
+raw_gh_pr_reviews:
+  # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  queries_per_day: 4
+
+  # Only return pull requests with at least this many reviews
+  min_reviews: 1
+
+  # Number of reviews to fetch per pull request
+  max_reviews: 20
+
+  # Number of pull requests to fetch per request
+  per_page: 50
+
 issues:
   llm_concurrency_per_issues_partition: 8
   # How much cluster content we send to the LLM (labeling)

@@ -40,6 +40,11 @@ class RawItem:
     reactions_count: int = 0
     org_name: str = ""
     product_name: str = ""
+    product_desc: str = ""
+    product_stars: int = 0
+    product_forks: int = 0
+    product_watchers: int = 0
+    license: str = ""
 
 
 # Column order for bronze.raw_items (must match duckdb.sql). Used by to_df() and by upsert when columns=None.
@@ -51,6 +56,11 @@ RAW_ITEMS_TABLE_COLUMNS = [
     "post_type",
     "org_name",
     "product_name",
+    "product_desc",
+    "product_stars",
+    "product_forks",
+    "product_watchers",
+    "license",
     "title",
     "body",
     "upvotes_count",
@@ -89,6 +99,11 @@ class CollectedItems:
         df["source_post_id"] = df["source_post_id"].fillna("").astype("object")
         df["org_name"] = df["org_name"].fillna("").astype("object")
         df["product_name"] = df["product_name"].fillna("").astype("object")
+        df["product_desc"] = df["product_desc"].fillna("").astype("object")
+        df["product_stars"] = df["product_stars"].fillna(0).astype(int)
+        df["product_forks"] = df["product_forks"].fillna(0).astype(int)
+        df["product_watchers"] = df["product_watchers"].fillna(0).astype(int)
+        df["license"] = df["license"].fillna("").astype("object")
         df["post_type"] = df["post_type"].fillna("issue").astype("object")
         df["collected_at"] = pd.to_datetime(
             df["collected_at"], format="%Y-%m-%d", errors="coerce"
