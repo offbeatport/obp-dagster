@@ -1,25 +1,20 @@
 """Raw GitHub discussions asset."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from burningdemand.schema.raw_items import RawComment, RawItem, RawReactionsGroups
+from burningdemand.schema.raw_items import RawItem
 from burningdemand.utils.config import config
-from burningdemand.utils.raw_utils import materialize_raw
-
-
-def _parse_reaction_groups(groups: List[Dict[str, Any]]) -> List[RawReactionsGroups]:
-    return [
-        RawReactionsGroups(
-            type=(rg.get("content") or ""),
-            count=(rg.get("users") or {}).get("totalCount") or 0,
-        )
-        for rg in groups
-    ]
+from burningdemand.utils.raw_utils import (
+    materialize_raw,
+    parse_github_comments_list,
+    parse_github_labels,
+    parse_github_reaction_groups,
+)
 
 
 def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
@@ -27,6 +22,12 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     repository = d.get("repository") or {}
     license_info = repository.get("licenseInfo") or {}
     license_name = license_info.get("spdxId") or ""
+
+    comments_list = parse_github_comments_list(d.get("comments"))
+    comments_count = d.get("comments").get("totalCount") or 0
+
+    reviews_list = parse_github_comments_list(d.get("reviews"))
+    reviews_count = d.get("reviews").get("totalCount") or 0
 
     return RawItem(
         url=d.get("url"),
@@ -39,21 +40,14 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
         license=license_name,
         created_at=d.get("createdAt") or "",
-        comments_list=[
-            RawComment(
-                body=(c.get("body") or ""),
-                created_at=(c.get("updatedAt") or c.get("createdAt") or ""),
-                upvotes_count=(c.get("reactions") or {}).get("totalCount") or 0,
-                reactions=_parse_reaction_groups(c.get("reactionGroups") or []),
-            )
-            for c in d.get("comments").get("nodes", [])
-        ],
-        comments_count=d.get("comments").get("totalCount") or 0,
+        comments_list=comments_list + reviews_list,
+        comments_count=comments_count + reviews_count,
         upvotes_count=d.get("upvoteCount") or 0,
         post_type=post_type,
-        reactions_groups=_parse_reaction_groups(d.get("reactionGroups") or []),
+        reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
         source_post_id=str(d.get("id")) or "",
+        labels=parse_github_labels(d.get("labels")),
     )
 
 
@@ -82,6 +76,7 @@ async def raw_gh_discussions(
             isAnswered
             closed
             answer {{ body }}
+            labels(first:{cfg.max_labels}) {{ nodes {{ name }} }}
             repository {{
                 name        
                 owner {{ login }}
@@ -92,18 +87,11 @@ async def raw_gh_discussions(
                 nodes {{
                     body
                     updatedAt
-                    reactions {{ totalCount }}
-                    reactionGroups {{
-                        content        
-                        reactors {{ totalCount }}
-                    }}
+                    reactionGroups {{ content reactors {{ totalCount }} }}
                 }}
             }} 
             reactions {{ totalCount }} 
-            reactionGroups {{
-                content        
-                reactors {{ totalCount }}
-            }}
+            reactionGroups {{ content reactors {{ totalCount }} }}
         }}
     """
 

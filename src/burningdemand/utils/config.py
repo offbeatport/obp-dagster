@@ -71,6 +71,7 @@ class RawGhIssuesAssetConfig(BaseModel):
     min_reactions: int
     min_comments: int
     max_comments: int
+    max_labels: int
     per_page: int
 
 
@@ -78,6 +79,7 @@ class RawGhDiscussionsAssetConfig(BaseModel):
     queries_per_day: int
     min_comments: int
     max_comments: int
+    max_labels: int
     per_page: int
 
 
@@ -85,19 +87,8 @@ class RawGhPullRequestsAssetConfig(BaseModel):
     queries_per_day: int
     min_comments: int
     max_comments: int
-    per_page: int
-
-
-class RawGhRepositoriesAssetConfig(BaseModel):
-    queries_per_day: int
-    min_stars: int
-    per_page: int
-
-
-class RawGhPrReviewsAssetConfig(BaseModel):
-    queries_per_day: int
-    min_reviews: int
     max_reviews: int
+    max_labels: int
     per_page: int
 
 
@@ -109,8 +100,6 @@ class Config(BaseModel):
     raw_gh_issues: RawGhIssuesAssetConfig
     raw_gh_discussions: RawGhDiscussionsAssetConfig
     raw_gh_pull_requests: RawGhPullRequestsAssetConfig
-    raw_gh_repositories: RawGhRepositoriesAssetConfig
-    raw_gh_pr_reviews: RawGhPrReviewsAssetConfig
     issues: IssuesConfig
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig

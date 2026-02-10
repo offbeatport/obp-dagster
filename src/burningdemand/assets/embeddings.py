@@ -42,11 +42,6 @@ def _apply_hard_filter(
         "raw_gh_issues",
         "raw_gh_discussions",
         "raw_gh_pull_requests",
-        "raw_gh_repositories",
-        "raw_gh_pr_reviews",
-        "raw_rd",
-        "raw_so",
-        "raw_hn",
     ],
     automation_condition=AutomationCondition.eager()
     .without(AutomationCondition.in_latest_time_window())

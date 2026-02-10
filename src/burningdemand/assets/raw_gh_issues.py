@@ -1,28 +1,19 @@
 """Raw GitHub issues asset."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from burningdemand.schema.raw_items import (
-    CollectedItems,
-    RawComment,
-    RawItem,
-    RawReactionsGroups,
-)
+from burningdemand.schema.raw_items import RawItem
 from burningdemand.utils.config import config
-
-
-def _parse_reaction_groups(groups: List[Dict[str, Any]]) -> List[RawReactionsGroups]:
-    return [
-        RawReactionsGroups(
-            type=(rg.get("content") or ""),
-            count=(rg.get("users") or {}).get("totalCount") or 0,
-        )
-        for rg in groups
-    ]
+from burningdemand.utils.raw_utils import (
+    materialize_raw,
+    parse_github_comments_list,
+    parse_github_labels,
+    parse_github_reaction_groups,
+)
 
 
 def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
@@ -43,55 +34,16 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         product_stars=repository.get("stargazerCount") or 0,
         product_forks=repository.get("forkCount") or 0,
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
-        comments_list=[
-            RawComment(
-                body=(c.get("body") or ""),
-                created_at=(c.get("updatedAt") or c.get("createdAt") or ""),
-                upvotes_count=(c.get("reactions") or {}).get("totalCount") or 0,
-                reactions=_parse_reaction_groups(c.get("reactionGroups") or []),
-            )
-            for c in d.get("comments").get("nodes", [])
-        ],
+        comments_list=parse_github_comments_list(d.get("comments")),
         comments_count=d.get("comments").get("totalCount") or 0,
         upvotes_count=0,
         post_type=post_type,
-        reactions_groups=_parse_reaction_groups(d.get("reactionGroups") or []),
+        reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
         source_post_id=str(d.get("id")) or "",
         created_at=d.get("createdAt") or "",
         license=license_name,
-    )
-
-
-async def materialize_raw(
-    db: DuckDBResource,
-    items: List[RawItem],
-    meta: Dict[str, Any],
-    source: str,
-    date: str,
-) -> MaterializeResult:
-    """Upsert collected items into bronze.raw_items. Returns empty result if no items."""
-    if not items:
-        return MaterializeResult(
-            metadata={
-                "source": source,
-                "date": date,
-                "collected": 0,
-                "insert_attempted": 0,
-                "collector": meta,
-            }
-        )
-    collected = CollectedItems(items, meta)
-    df = collected.to_df(source, date)
-    inserted_attempt = db.upsert_df("bronze", "raw_items", df)
-    return MaterializeResult(
-        metadata={
-            "source": source,
-            "date": date,
-            "collected": len(df),
-            "insert_attempted": inserted_attempt,
-            "collector": meta,
-        }
+        labels=parse_github_labels(d.get("labels")),
     )
 
 
@@ -119,34 +71,20 @@ async def raw_gh_issues(
                 forkCount
                 watchers {{ totalCount }}
             }} 
+            labels(first:{cfg.max_labels}) {{ nodes {{ name }} }}
             comments(last: {cfg.max_comments}) {{
                 totalCount 
                 nodes {{
                     body
                     updatedAt
-                    reactionGroups {{
-                        content        
-                        reactors {{
-                            totalCount
-                        }}
-                    }}
-                    reactions {{
-                        totalCount
-                    }}  
+                    reactionGroups {{ content reactors {{ totalCount }} }}
                 }}
             }} 
-            reactionGroups {{
-                content        
-                reactors {{
-                    totalCount
-                }}
-            }}
-            reactions {{
-                totalCount
-            }}    
+            reactionGroups {{ content reactors {{ totalCount }} }}
+            reactions {{ totalCount }}    
         }}
     """
-    query_suffix = f"is:issue comments:>={cfg.min_comments}"
+    query_suffix = f"is:issue comments:>={cfg.min_comments} reactions:>={cfg.min_reactions} sort:interactions-desc"
     raw_items, meta = await github.search(
         date,
         node_fragment,

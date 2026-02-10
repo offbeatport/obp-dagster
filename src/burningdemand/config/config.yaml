@@ -1,67 +1,25 @@
 raw_gh_issues:
-  # Number of queries to make per day (each query is a day split into queries_per_day hours)
-  queries_per_day: 4
-
-  # Only return issues with at least this many reactions
-  min_reactions: 1
-
-  # Only return issues with at least this many comments
-  min_comments: 1
-
-  # Number of comments to fetch per issue
-  max_comments: 20
-
-  # Number of issues to fetch per request
-  per_page: 50
+  queries_per_day: 4 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  min_reactions: 1 # Only return issues with at least this many reactions
+  min_comments: 1 # Only return issues with at least this many comments
+  max_comments: 20 # Number of comments to fetch per issue
+  max_labels: 20 # Number of labels to fetch per issue
+  per_page: 50 # Number of issues to fetch per request
 
 raw_gh_discussions:
-  # Number of queries to make per day (each query is a day split into queries_per_day hours)
-  queries_per_day: 3
-
-  # Only return discussions with at least this many comments
-  min_comments: 1
-
-  # Number of comments to fetch per discussion
-  max_comments: 20
-
-  # Number of discussions to fetch per request
-  per_page: 50
+  queries_per_day: 3 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  min_comments: 1 # Only return discussions with at least this many comments
+  max_labels: 20 # Number of comments to fetch per discussion
+  max_comments: 20 # Number of comments to fetch per discussion
+  per_page: 50 # Number of discussions to fetch per request
 
 raw_gh_pull_requests:
-  # Number of queries to make per day (each query is a day split into queries_per_day hours)
-  queries_per_day: 4
-
-  # Only return pull requests with at least this many comments
-  min_comments: 1
-
-  # Number of comments to fetch per pull request
-  max_comments: 20
-
-  # Number of pull requests to fetch per request
-  per_page: 50
-
-raw_gh_repositories:
-  # Number of queries to make per day (each query is a day split into queries_per_day hours)
-  queries_per_day: 2
-
-  # Only return repositories with at least this many stars
-  min_stars: 10
-
-  # Number of repositories to fetch per request
-  per_page: 50
-
-raw_gh_pr_reviews:
-  # Number of queries to make per day (each query is a day split into queries_per_day hours)
-  queries_per_day: 4
-
-  # Only return pull requests with at least this many reviews
-  min_reviews: 1
-
-  # Number of reviews to fetch per pull request
-  max_reviews: 20
-
-  # Number of pull requests to fetch per request
-  per_page: 50
+  queries_per_day: 4 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  min_comments: 1 # Only return pull requests with at least this many comments
+  max_labels: 20 # Number of labels to fetch per pull request
+  max_comments: 20 # Number of comments to fetch per pull request
+  max_reviews: 20 # Number of reviews to fetch per pull request
+  per_page: 50 # Number of pull requests to fetch per request
 
 issues:
   llm_concurrency_per_issues_partition: 8

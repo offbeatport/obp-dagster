@@ -18,8 +18,7 @@ class RawReactionsGroups:
 @dataclasses.dataclass
 class RawComment:
     body: str = ""
-    created_at: str = ""
-    upvotes_count: int = 0
+    updated_at: str = ""
     reactions: List[RawReactionsGroups] = dataclasses.field(default_factory=list)
 
 
@@ -45,6 +44,7 @@ class RawItem:
     product_forks: int = 0
     product_watchers: int = 0
     license: str = ""
+    labels: List[str] = dataclasses.field(default_factory=list)
 
 
 # Column order for bronze.raw_items (must match duckdb.sql). Used by to_df() and by upsert when columns=None.
@@ -70,6 +70,7 @@ RAW_ITEMS_TABLE_COLUMNS = [
     "comments_count",
     "created_at",
     "collected_at",
+    "labels",
 ]
 
 
@@ -118,4 +119,7 @@ class CollectedItems:
         )
         df["reactions_count"] = df["reactions_count"].fillna(0).astype(int)
         df["upvotes_count"] = df["upvotes_count"].fillna(0).astype(int)
+        df["labels"] = df["labels"].apply(
+            lambda x: json.dumps(x) if isinstance(x, list) else x
+        )
         return df[RAW_ITEMS_TABLE_COLUMNS]
