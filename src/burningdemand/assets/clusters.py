@@ -31,9 +31,9 @@ def load_embeddings_in_window(
         SELECT
             e.url_hash,
             e.embedding,
-            b.vote_count,
+            b.upvotes_count AS vote_count,
             b.reactions_count,
-            b.comments_count,
+            b.comments_count
         FROM silver.embeddings e
         JOIN bronze.raw_items b ON e.url_hash = b.url_hash
         WHERE b.created_at >= ?

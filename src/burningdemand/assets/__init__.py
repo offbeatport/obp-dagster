@@ -5,6 +5,7 @@ from .raw_gh_pull_requests import raw_gh_pull_requests
 from .raw_hn import raw_hn
 from .raw_rd import raw_rd
 from .raw_so import raw_so
+from .pain_classifier import pain_classifier
 from .embeddings import embeddings
 from .clusters import clusters
 from .issues import issues
@@ -18,6 +19,7 @@ __all__ = [
     "raw_rd",
     "raw_so",
     "raw_hn",
+    "pain_classifier",
     "embeddings",
     "clusters",
     "issues",

@@ -23,6 +23,16 @@ raw_gh_pull_requests:
   max_comments: 10 # Number of comments to fetch per pull request
   per_page: 50 # Number of pull requests to fetch per request
 
+pain_classifier:
+  batch_size: 10
+  max_body_length: 1500
+  max_comment_length: 300
+  pain_threshold: 0.5
+  llm:
+    model: "gpt-5-mini"
+    base_url: "https://llm.offbeatport.com"
+    max_tokens: 500
+
 issues:
   llm_concurrency_per_issues_partition: 8
   # How much cluster content we send to the LLM (labeling)

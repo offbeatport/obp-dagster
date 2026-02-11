@@ -56,8 +56,23 @@ class IssueLabel(BaseModel):
         return out if out else ["other"]
 
 
+class PainClassification(BaseModel):
+    """Per-item pain classifier output."""
+    pain: float = Field(ge=0.0, le=1.0)
+    would_pay: float = Field(ge=0.0, le=1.0)
+    noise: float = Field(ge=0.0, le=1.0)
+
+
 def extract_first_json_obj(text: str) -> dict:
     m = re.search(r"\{.*\}", text, flags=re.S)
     if not m:
         raise ValueError("No JSON object found in model output")
+    return json.loads(m.group(0))
+
+
+def extract_json_array(text: str) -> list:
+    """Extract first JSON array from model output."""
+    m = re.search(r"\[.*\]", text, flags=re.S)
+    if not m:
+        raise ValueError("No JSON array found in model output")
     return json.loads(m.group(0))

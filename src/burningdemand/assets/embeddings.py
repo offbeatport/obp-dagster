@@ -29,10 +29,10 @@ def _apply_hard_filter(
         input_count,
     )
 
-    if len(items) == 0:
+    if len(filtered_items) == 0:
         context.log.info("No items left after hard filter")
 
-    return filtered_items
+    return filtered_items, filtered_out, input_count
 
 
 @asset(
@@ -42,6 +42,7 @@ def _apply_hard_filter(
         "raw_gh_issues",
         "raw_gh_discussions",
         "raw_gh_pull_requests",
+        "pain_classifier",
     ],
     automation_condition=AutomationCondition.eager()
     .without(AutomationCondition.in_latest_time_window())
@@ -56,22 +57,36 @@ def embeddings(
 ) -> MaterializeResult:
     date = context.partition_key
 
+    # Clear previous embeddings for this date to keep things clean
+    db.execute("DELETE FROM silver.embeddings WHERE embedding_date = ?", [date])
+
+    # Load raw items for this date, joined with pain_classifications.
+    # Only embed items with pain >= threshold (classifier gate before clustering).
+    pain_threshold = config.pain_classifier.pain_threshold
     items = db.query_df(
-        f"""
-        SELECT *
+        """
+        SELECT b.*
         FROM bronze.raw_items b
+        JOIN silver.pain_classifications pc
+          ON b.url_hash = pc.url_hash
+          AND pc.classification_date = ?
         WHERE CAST(b.created_at AS DATE) = ?
+          AND pc.pain_prob >= ?
         """,
-        [date],
+        [date, date, pain_threshold],
     )
 
-    items = _apply_hard_filter(context, items)
-    print(items)
-    exit()
+    items, hard_filtered_out, before_hard_filter = _apply_hard_filter(context, items)
 
     if len(items) == 0:
-        context.log.info(f"No new items to process for {date}")
-        return MaterializeResult(metadata={"enriched": 0})
+        context.log.info("No new items to process for %s", date)
+        return MaterializeResult(
+            metadata={
+                "embeddings": 0,
+                "hard_filtered_out": int(hard_filtered_out),
+                "hard_filter_input": int(before_hard_filter),
+            }
+        )
 
     total = 0
     batch_size = config.embeddings.asset_batch_size

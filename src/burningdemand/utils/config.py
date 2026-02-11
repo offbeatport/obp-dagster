@@ -45,6 +45,14 @@ class IssuesConfig(BaseModel):
     llm: LlmConfig
 
 
+class PainClassifierConfig(BaseModel):
+    batch_size: int
+    max_body_length: int
+    max_comment_length: int
+    pain_threshold: float
+    llm: LlmConfig
+
+
 class EmbeddingConfig(BaseModel):
     model: str
     encode_batch_size: int
@@ -103,6 +111,7 @@ class Config(BaseModel):
     raw_gh_discussions: RawGhDiscussionsAssetConfig
     raw_gh_pull_requests: RawGhPullRequestsAssetConfig
     issues: IssuesConfig
+    pain_classifier: PainClassifierConfig
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
     keywords: dict[str, Any]
@@ -160,6 +169,19 @@ class Config(BaseModel):
         raw = self.prompts["system_prompt_lite"]
         return str(raw)
 
+    def build_pain_classifier_prompt(self, items_text: list[str]) -> str:
+        """Build user prompt for batch pain classification."""
+        lines = [
+            "Classify each post. Return a JSON array of objects, one per post, in the same order:",
+            '[{"pain": 0.0-1.0, "would_pay": 0.0-1.0, "noise": 0.0-1.0}, ...]',
+            "",
+            "Posts:",
+        ]
+        for i, t in enumerate(items_text, 1):
+            lines.append(f"--- Post {i} ---")
+            lines.append(t[:8000] if t else "(empty)")  # cap per-item for token safety
+        return "\n".join(lines)
+
     def build_label_prompt(self, titles: list[str], size: int, snippets: str) -> str:
         titles_str = "\n".join(f"- {t}" for t in titles if t)
         snippets_section = f"\n\nSnippets:\n{snippets}" if snippets else ""
@@ -193,6 +215,7 @@ __all__ = [
     "LabelingConfig",
     "IssuesConfig",
     "EmbeddingConfig",
+    "PainClassifierConfig",
     "ClusteringConfig",
     "RepresentativesConfig",
     "RawGhDiscussionsAssetConfig",

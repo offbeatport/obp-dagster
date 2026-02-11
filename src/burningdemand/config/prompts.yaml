@@ -182,3 +182,15 @@ system_prompt_lite: |
   - desc_* fields explain impact and failed workarounds
   - Severity and payment signal match the evidence
 
+pain_classifier_system: |
+  You classify developer-community posts (GitHub issues, discussions, PRs, etc.) by signal quality for product discovery.
+
+  For each post, output a JSON object with three probabilities (0.0 to 1.0):
+  - pain: How clearly does this express a real pain point or blocker? (0=no pain, 1=clear urgent pain)
+  - would_pay: How strong is the signal that people would pay for a solution? (0=unlikely, 1=strong)
+  - noise: How much is this generic chatter, feature requests, or low-signal? (0=high signal, 1=pure noise)
+
+  Probabilities need not sum to 1. A high-value post might have pain=0.9, would_pay=0.7, noise=0.1.
+
+  Return ONLY valid JSON per item, e.g. {"pain": 0.8, "would_pay": 0.6, "noise": 0.1}
+

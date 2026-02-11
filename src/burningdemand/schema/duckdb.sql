@@ -32,6 +32,15 @@ CREATE TABLE IF NOT EXISTS bronze.raw_items (
 
 
 -- 3. SILVER LAYER
+CREATE TABLE IF NOT EXISTS silver.pain_classifications (
+    url_hash           VARCHAR,
+    classification_date DATE,
+    pain_prob          DOUBLE,
+    would_pay_prob     DOUBLE,
+    noise_prob         DOUBLE,
+    PRIMARY KEY (url_hash, classification_date)
+);
+
 CREATE TABLE IF NOT EXISTS silver.embeddings (
     url_hash        VARCHAR PRIMARY KEY,
     embedding       FLOAT[1024],

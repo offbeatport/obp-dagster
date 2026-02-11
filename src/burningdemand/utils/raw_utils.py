@@ -31,9 +31,9 @@ def parse_github_comments_list(comments: Dict[str, Any] | None) -> List[RawComme
     nodes = (comments or {}).get("nodes") or []
     return [
         RawComment(
-            body=(c.get("body") or ""),
-            updated_at=(c.get("updatedAt") or c.get("createdAt") or ""),
-            reactions=parse_github_reaction_groups(c.get("reactionGroups") or []),
+            body=((c or {}).get("body") or ""),
+            updated_at=((c or {}).get("updatedAt") or (c or {}).get("createdAt") or ""),
+            reactions=parse_github_reaction_groups((c or {}).get("reactionGroups") or []),
         )
         for c in nodes
     ]
@@ -53,6 +53,12 @@ async def materialize_raw(
     date: str,
 ) -> MaterializeResult:
     """Upsert collected items into bronze.raw_items. Returns empty result if no items."""
+    # Delete existing rows for this source and date before insert (keep things clean)
+    db.execute(
+        "DELETE FROM bronze.raw_items WHERE source = ? AND CAST(collected_at AS DATE) = ?",
+        [source, date],
+    )
+
     if not items:
         return MaterializeResult(
             metadata={
