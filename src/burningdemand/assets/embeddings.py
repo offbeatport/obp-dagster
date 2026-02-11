@@ -39,10 +39,7 @@ def _apply_hard_filter(
     partitions_def=daily_partitions,
     group_name="silver",
     deps=[
-        "raw_gh_issues",
-        "raw_gh_discussions",
-        "raw_gh_pull_requests",
-        "pain_classifier",
+        "classifications",
     ],
     automation_condition=AutomationCondition.eager()
     .without(AutomationCondition.in_latest_time_window())
@@ -60,14 +57,14 @@ def embeddings(
     # Clear previous embeddings for this date to keep things clean
     db.execute("DELETE FROM silver.embeddings WHERE embedding_date = ?", [date])
 
-    # Load raw items for this date, joined with pain_classifications.
-    # Only embed items with pain >= threshold (classifier gate before clustering).
-    pain_threshold = config.pain_classifier.pain_threshold
+    # Load raw items for this date, joined with classifications.
+    # Only embed items with pain >= threshold (classification gate before clustering).
+    pain_threshold = config.classification.pain_threshold
     items = db.query_df(
         """
         SELECT b.*
         FROM bronze.raw_items b
-        JOIN silver.pain_classifications pc
+        JOIN silver.classifications pc
           ON b.url_hash = pc.url_hash
           AND pc.classification_date = ?
         WHERE CAST(b.created_at AS DATE) = ?

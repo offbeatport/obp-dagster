@@ -1,4 +1,4 @@
-"""Pain classifier asset: LLM gate before clustering."""
+"""Classification asset: LLM gate (pain/would_pay/noise) + language detection before clustering."""
 
 import asyncio
 import json
@@ -74,10 +74,12 @@ async def _classify_batch(
     url_hashes: List[str],
     date: str,
 ) -> List[dict]:
-    """Call LLM to classify a batch; return list of {url_hash, pain_prob, would_pay_prob, noise_prob}."""
-    cfg = config.pain_classifier
-    prompt = config.build_pain_classifier_prompt(items_text)
-    system = config.prompts.get("pain_classifier_system", config.build_system_prompt_lite())
+    """Call LLM to classify a batch; return list of {url_hash, pain_prob, would_pay_prob, noise_prob, confidence, language}."""
+    cfg = config.classification
+    prompt = config.build_classification_prompt(items_text)
+    system = config.prompts.get(
+        "classification_system", config.build_system_prompt_lite()
+    )
 
     last_error = None
     for attempt in range(LLM_RETRY_ATTEMPTS):
@@ -101,20 +103,24 @@ async def _classify_batch(
             results = []
             for i, obj in enumerate(arr):
                 label = PainClassification.model_validate(obj)
-                results.append({
-                    "url_hash": url_hashes[i],
-                    "classification_date": date,
-                    "pain_prob": float(label.pain),
-                    "would_pay_prob": float(label.would_pay),
-                    "noise_prob": float(label.noise),
-                })
+                results.append(
+                    {
+                        "url_hash": url_hashes[i],
+                        "classification_date": date,
+                        "pain_prob": float(label.pain),
+                        "would_pay_prob": float(label.would_pay),
+                        "noise_prob": float(label.noise),
+                        "confidence": float(label.confidence),
+                        "language": (label.lang or "en")[:10],
+                    }
+                )
             return results
         except Exception as e:
             last_error = e
             if attempt < LLM_RETRY_ATTEMPTS - 1:
                 delay = LLM_RETRY_BACKOFF_SEC[attempt]
                 context.log.warning(
-                    "pain_classifier batch attempt %s/%s: %s; retrying in %ss",
+                    "classification batch attempt %s/%s: %s; retrying in %ss",
                     attempt + 1,
                     LLM_RETRY_ATTEMPTS,
                     e,
@@ -135,14 +141,14 @@ async def _classify_batch(
         "raw_gh_pull_requests",
     ],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
-    description="Classify raw items with LLM (pain, would_pay, noise probabilities). Gate before clustering: only items above pain_threshold proceed to embeddings.",
+    description="Classify raw items via LLM (pain/would_pay/noise/confidence/lang). Gate before clustering: only items above pain_threshold proceed to embeddings.",
 )
-async def pain_classifier(
+async def classifications(
     context: AssetExecutionContext,
     db: DuckDBResource,
 ) -> MaterializeResult:
     date = context.partition_key
-    cfg = config.pain_classifier
+    cfg = config.classification
 
     items = db.query_df(
         """
@@ -159,7 +165,7 @@ async def pain_classifier(
 
     # Clear existing classifications for this date
     db.execute(
-        "DELETE FROM silver.pain_classifications WHERE classification_date = ?",
+        "DELETE FROM silver.classifications WHERE classification_date = ?",
         [date],
     )
 
@@ -189,9 +195,17 @@ async def pain_classifier(
         df = pd.DataFrame(classifications)
         db.upsert_df(
             "silver",
-            "pain_classifications",
+            "classifications",
             df,
-            ["url_hash", "classification_date", "pain_prob", "would_pay_prob", "noise_prob"],
+            [
+                "url_hash",
+                "classification_date",
+                "pain_prob",
+                "would_pay_prob",
+                "noise_prob",
+                "confidence",
+                "language",
+            ],
         )
         total_classified += len(classifications)
 

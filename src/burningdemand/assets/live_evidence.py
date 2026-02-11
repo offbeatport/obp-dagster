@@ -39,9 +39,9 @@ async def live_evidence(
 
     evidence_rows = db.query_df(
         """
-        SELECT cluster_id, source, url, body, posted_at
+        SELECT group_id, source, url, body, posted_at
         FROM gold.issue_evidence
-        WHERE cluster_date = ?
+        WHERE group_date = ?
         """,
         [date],
     )
@@ -50,19 +50,19 @@ async def live_evidence(
         return MaterializeResult(metadata={"posted": 0, "skipped": 0, "errors": 0})
 
     date_escaped = str(date).replace('"', '\\"')
-    filter_expr = f'origin="collected" && cluster_date="{date_escaped} 00:00:00.000Z"'
+    filter_expr = f'origin="collected" && group_date="{date_escaped} 00:00:00.000Z"'
     existing_issues = pb.get_records("issues", filter_expr, per_page=500)
-    cluster_id_to_pb_issue_id = {int(r["cluster_id"]): r["id"] for r in existing_issues}
+    group_id_to_pb_issue_id = {int(r["group_id"]): r["id"] for r in existing_issues}
 
-    # Rows to consider: (cluster_id, url, body, posted_at, source_type); only if we have a PB issue
+    # Rows to consider: (group_id, url, body, posted_at, source_type); only if we have a PB issue
     rows_with_issue = []
     for _, ev in evidence_rows.iterrows():
-        cid = int(ev["cluster_id"])
-        if cid not in cluster_id_to_pb_issue_id:
+        gid = int(ev["group_id"])
+        if gid not in group_id_to_pb_issue_id:
             continue
         rows_with_issue.append(
             (
-                cluster_id_to_pb_issue_id[cid],
+                group_id_to_pb_issue_id[gid],
                 str(ev["url"]),
                 str(ev.get("body", ""))[:500],
                 str(ev.get("posted_at", "")),

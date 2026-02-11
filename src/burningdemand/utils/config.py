@@ -45,7 +45,7 @@ class IssuesConfig(BaseModel):
     llm: LlmConfig
 
 
-class PainClassifierConfig(BaseModel):
+class ClassificationConfig(BaseModel):
     batch_size: int
     max_body_length: int
     max_comment_length: int
@@ -111,7 +111,7 @@ class Config(BaseModel):
     raw_gh_discussions: RawGhDiscussionsAssetConfig
     raw_gh_pull_requests: RawGhPullRequestsAssetConfig
     issues: IssuesConfig
-    pain_classifier: PainClassifierConfig
+    classification: ClassificationConfig
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
     keywords: dict[str, Any]
@@ -169,7 +169,7 @@ class Config(BaseModel):
         raw = self.prompts["system_prompt_lite"]
         return str(raw)
 
-    def build_pain_classifier_prompt(self, items_text: list[str]) -> str:
+    def build_classification_prompt(self, items_text: list[str]) -> str:
         """Build user prompt for batch pain classification."""
         lines = [
             "Classify each post. Return a JSON array of objects, one per post, in the same order:",
@@ -215,7 +215,7 @@ __all__ = [
     "LabelingConfig",
     "IssuesConfig",
     "EmbeddingConfig",
-    "PainClassifierConfig",
+    "ClassificationConfig",
     "ClusteringConfig",
     "RepresentativesConfig",
     "RawGhDiscussionsAssetConfig",

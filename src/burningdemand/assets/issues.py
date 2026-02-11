@@ -13,9 +13,9 @@ from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.utils.issues_utils import (
     clear_issues_data_for_date,
-    get_clusters_for_date,
-    label_cluster_with_llm,
-    prepare_clusters,
+    get_groups_for_date,
+    label_group_with_llm,
+    prepare_groups,
     save_results,
 )
 
@@ -23,8 +23,8 @@ from burningdemand.utils.issues_utils import (
 @asset(
     partitions_def=daily_partitions,
     group_name="gold",
-    deps=["clusters"],
-    description="Label clusters using LLM to extract canonical titles, categories, descriptions, and impact levels. Processes clusters ranked by authority_score (highest first) to prioritize high-engagement signals. Computes representatives on-the-fly and includes LLM retry/validation.",
+    deps=["groups"],
+    description="Label groups using LLM to extract canonical titles, categories, descriptions, and impact levels. Processes groups ranked by authority_score (highest first) to prioritize high-engagement signals. Computes representatives on-the-fly and includes LLM retry/validation.",
     auto_materialize_policy=AutoMaterializePolicy.eager(),
 )
 async def issues(
@@ -34,12 +34,12 @@ async def issues(
     date = context.partition_key
 
     clear_issues_data_for_date(db, date)
-    clusters = get_clusters_for_date(db, date)
-    if len(clusters) == 0:
+    groups_df = get_groups_for_date(db, date)
+    if len(groups_df) == 0:
         return MaterializeResult(metadata={"labeled": 0, "attempted": 0})
 
-    cluster_ids = clusters["cluster_id"].astype(int).tolist()
-    titles_by_cluster, snippets_by_cluster = prepare_clusters(db, date, cluster_ids)
+    group_ids = groups_df["group_id"].astype(int).tolist()
+    titles_by_group, snippets_by_group = prepare_groups(db, date, group_ids)
     results: List[dict] = []
     failed: List[dict] = []
     errors: List[str] = []
@@ -47,19 +47,19 @@ async def issues(
 
     await asyncio.gather(
         *[
-            label_cluster_with_llm(
-                int(r["cluster_id"]),
-                int(r["cluster_size"]),
+            label_group_with_llm(
+                int(r["group_id"]),
+                int(r["group_size"]),
                 float(r.get("authority_score", 0.0)),
-                titles_by_cluster.get(int(r["cluster_id"]), []),
-                snippets_by_cluster.get(int(r["cluster_id"]), ""),
+                titles_by_group.get(int(r["group_id"]), []),
+                snippets_by_group.get(int(r["group_id"]), ""),
                 date,
                 sem,
                 results,
                 failed,
                 errors,
             )
-            for _, r in clusters.iterrows()
+            for _, r in groups_df.iterrows()
         ]
     )
 
@@ -67,7 +67,7 @@ async def issues(
         save_results(db, results, failed, date)
 
     metadata = {
-        "attempted": int(len(clusters)),
+        "attempted": int(len(groups_df)),
         "labeled": int(len(results)),
         "failed": int(len(failed)),
         "errors": int(len(errors)),

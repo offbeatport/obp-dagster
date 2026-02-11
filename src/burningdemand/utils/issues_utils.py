@@ -1,5 +1,5 @@
 """
-Helpers for the issues asset: cluster queries, LLM labeling, and DB writes.
+Helpers for the issues asset: group queries, LLM labeling, and DB writes.
 """
 
 import asyncio
@@ -20,34 +20,34 @@ from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
 
 def clear_issues_data_for_date(db: DuckDBResource, date: str) -> None:
     """Remove existing gold.issues and gold.issue_evidence for this partition (enables full recompute on re-materialize)."""
-    db.execute("DELETE FROM gold.issue_evidence WHERE cluster_date = ?", [date])
-    db.execute("DELETE FROM gold.issues WHERE cluster_date = ?", [date])
+    db.execute("DELETE FROM gold.issue_evidence WHERE group_date = ?", [date])
+    db.execute("DELETE FROM gold.issues WHERE group_date = ?", [date])
 
 
-def get_clusters_for_date(db: DuckDBResource, date: str) -> pd.DataFrame:
-    """All clusters for this date, ranked by authority_score (descending). Used when recomputing labels for the partition."""
+def get_groups_for_date(db: DuckDBResource, date: str) -> pd.DataFrame:
+    """All groups for this date, ranked by authority_score (descending). Used when recomputing labels for the partition."""
     return db.query_df(
         """
-        SELECT sc.cluster_id, sc.cluster_size, sc.authority_score
-        FROM silver.clusters sc
-        WHERE sc.cluster_date = ?
-        ORDER BY sc.authority_score DESC, sc.cluster_size DESC
+        SELECT sg.group_id, sg.group_size, sg.authority_score
+        FROM silver.groups sg
+        WHERE sg.group_date = ?
+        ORDER BY sg.authority_score DESC, sg.group_size DESC
         """,
         [date],
     )
 
 
-def prepare_clusters(
+def prepare_groups(
     db: DuckDBResource,
     date: str,
-    cluster_ids: List[int],
-) -> Tuple[Dict[int, List[str]], Dict[int, str], Dict[int, str]]:
-    """Load cluster items from DB and compute representative titles + snippets per cluster."""
-    titles_by_cluster: Dict[int, List[str]] = {}
-    snippets_by_cluster: Dict[int, str] = {}
+    group_ids: List[int],
+) -> Tuple[Dict[int, List[str]], Dict[int, str]]:
+    """Load group items from DB and compute representative titles + snippets per group."""
+    titles_by_group: Dict[int, List[str]] = {}
+    snippets_by_group: Dict[int, str] = {}
 
-    for cid in cluster_ids:
-        cluster_data = db.query_df(
+    for gid in group_ids:
+        group_data = db.query_df(
             """
             SELECT
                 e.url_hash,
@@ -57,39 +57,39 @@ def prepare_clusters(
                 b.source
             FROM silver.embeddings e
             JOIN bronze.raw_items b ON e.url_hash = b.url_hash
-            JOIN silver.cluster_assignments ca ON e.url_hash = ca.url_hash
-            WHERE ca.cluster_date = ?
-              AND ca.cluster_id = ?
+            JOIN silver.group_members gm ON e.url_hash = gm.url_hash
+            WHERE gm.group_date = ?
+              AND gm.group_id = ?
             """,
-            [date, cid],
+            [date, gid],
         )
 
-        if len(cluster_data) == 0:
-            titles_by_cluster[cid] = []
-            snippets_by_cluster[cid] = ""
+        if len(group_data) == 0:
+            titles_by_group[gid] = []
+            snippets_by_group[gid] = ""
             continue
 
         embeddings_array = np.array(
-            cluster_data["embedding"].tolist(), dtype=np.float32
+            group_data["embedding"].tolist(), dtype=np.float32
         )
-        cluster_items = pd.DataFrame(
+        group_items = pd.DataFrame(
             {
-                "title": cluster_data["title"],
-                "body": cluster_data["body"],
-                "source": cluster_data["source"],
+                "title": group_data["title"],
+                "body": group_data["body"],
+                "source": group_data["source"],
             }
         )
         titles, snippets = get_cluster_representatives(
-            cluster_items,
+            group_items,
             embeddings_array,
             max_representatives_count=config.issues.labeling.max_representatives_for_labeling,
             max_snippets_count=config.issues.labeling.max_snippets_for_labeling,
             max_body_length=config.issues.labeling.max_body_length_for_snippet,
         )
-        titles_by_cluster[cid] = titles
-        snippets_by_cluster[cid] = snippets
+        titles_by_group[gid] = titles
+        snippets_by_group[gid] = snippets
 
-    return titles_by_cluster, snippets_by_cluster
+    return titles_by_group, snippets_by_group
 
 
 # Retry for transient LLM API errors
@@ -97,8 +97,8 @@ LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_BACKOFF_SEC = [1.0, 2.0, 4.0]
 
 
-async def label_cluster_with_llm(
-    cid: int,
+async def label_group_with_llm(
+    gid: int,
     size: int,
     authority_score: float,
     titles: List[str],
@@ -109,7 +109,7 @@ async def label_cluster_with_llm(
     failed: List[dict],
     errors: List[str],
 ) -> None:
-    """Label one cluster via LLM. Retries on transient errors with backoff."""
+    """Label one group via LLM. Retries on transient errors with backoff."""
     async with sem:
         prompt = config.build_label_prompt(titles, size, snippets)
         label_data = None
@@ -147,8 +147,8 @@ async def label_cluster_with_llm(
                 if attempt < LLM_RETRY_ATTEMPTS - 1:
                     delay = LLM_RETRY_BACKOFF_SEC[attempt]
                     log.warning(
-                        "cluster_id=%s attempt %s/%s: %s; retrying in %ss",
-                        cid,
+                        "group_id=%s attempt %s/%s: %s; retrying in %ss",
+                        gid,
                         attempt + 1,
                         LLM_RETRY_ATTEMPTS,
                         e,
@@ -156,13 +156,13 @@ async def label_cluster_with_llm(
                     )
                     await asyncio.sleep(delay)
                 else:
-                    log.warning("cluster_id=%s: %s", cid, e, exc_info=True)
+                    log.warning("group_id=%s: %s", gid, e, exc_info=True)
 
         if label_data:
             results.append(
                 {
-                    "cluster_date": date,
-                    "cluster_id": int(cid),
+                    "group_date": date,
+                    "group_id": int(gid),
                     "canonical_title": label_data["canonical_title"],
                     "category": label_data["category"],
                     "desc_problem": label_data["desc_problem"],
@@ -171,7 +171,7 @@ async def label_cluster_with_llm(
                     "desc_details": label_data["desc_details"],
                     "would_pay_signal": label_data["would_pay_signal"],
                     "impact_level": label_data["impact_level"],
-                    "cluster_size": int(size),
+                    "group_size": int(size),
                     "authority_score": float(authority_score),
                     "label_failed": False,
                 }
@@ -179,12 +179,12 @@ async def label_cluster_with_llm(
         else:
             failed.append(
                 {
-                    "cluster_date": date,
-                    "cluster_id": int(cid),
+                    "group_date": date,
+                    "group_id": int(gid),
                     "label_failed": True,
                 }
             )
-            errors.append(f"cluster_id={cid}: {last_error}")
+            errors.append(f"group_id={gid}: {last_error}")
 
 
 def save_results(
@@ -201,8 +201,8 @@ def save_results(
             "issues",
             df,
             [
-                "cluster_date",
-                "cluster_id",
+                "group_date",
+                "group_id",
                 "canonical_title",
                 "category",
                 "desc_problem",
@@ -211,7 +211,7 @@ def save_results(
                 "desc_details",
                 "would_pay_signal",
                 "impact_level",
-                "cluster_size",
+                "group_size",
                 "authority_score",
                 "label_failed",
             ],
@@ -224,34 +224,34 @@ def save_results(
             "issues",
             failed_df,
             [
-                "cluster_date",
-                "cluster_id",
+                "group_date",
+                "group_id",
                 "label_failed",
             ],
         )
 
     # Backfill evidence for all successfully labeled issues for this date
-    # (items that belong to each cluster), so gold.issue_evidence stays in sync.
+    # (items that belong to each group), so gold.issue_evidence stays in sync.
     if results or failed:
         db.execute(
             """
-            INSERT INTO gold.issue_evidence (cluster_date, cluster_id, url_hash, source, url, title, body, posted_at)
-            SELECT ca.cluster_date,
-                   ca.cluster_id,
-                   ca.url_hash,
+            INSERT INTO gold.issue_evidence (group_date, group_id, url_hash, source, url, title, body, posted_at)
+            SELECT gm.group_date,
+                   gm.group_id,
+                   gm.url_hash,
                    b.source,
                    b.url,
                    b.title,
                    b.body,
                    b.created_at
-            FROM silver.cluster_assignments ca
+            FROM silver.group_members gm
             JOIN bronze.raw_items b
-              ON ca.url_hash = b.url_hash
-            WHERE ca.cluster_date = ?
+              ON gm.url_hash = b.url_hash
+            WHERE gm.group_date = ?
               AND EXISTS (
                   SELECT 1 FROM gold.issues gi
-                  WHERE gi.cluster_date = ca.cluster_date
-                    AND gi.cluster_id = ca.cluster_id
+                  WHERE gi.group_date = gm.group_date
+                    AND gi.group_id = gm.group_id
                     AND gi.label_failed = FALSE
               )
             ON CONFLICT DO NOTHING

@@ -9,7 +9,7 @@ from dagster import ConfigurableResource
 from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
-from burningdemand.schema.raw_items import RawItem
+from burningdemand.model.raw_items import RawItem
 from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
@@ -56,13 +56,15 @@ class RedditResource(ConfigurableResource):
         req_count = 0
 
         if client_id and client_secret:
-            token_specs = [{
-                "method": "POST",
-                "url": "https://www.reddit.com/api/v1/access_token",
-                "auth": (client_id, client_secret),
-                "data": {"grant_type": "client_credentials"},
-                "headers": {"User-Agent": user_agent},
-            }]
+            token_specs = [
+                {
+                    "method": "POST",
+                    "url": "https://www.reddit.com/api/v1/access_token",
+                    "auth": (client_id, client_secret),
+                    "data": {"grant_type": "client_credentials"},
+                    "headers": {"User-Agent": user_agent},
+                }
+            ]
             token_pairs = await batch_requests(
                 self._client, self._context, token_specs, limiter=RATE_LIMITER
             )
@@ -81,12 +83,15 @@ class RedditResource(ConfigurableResource):
             f"Reddit: {len(subreddits)} subreddits, {'OAuth' if token else 'public'}"
         )
 
-        sub_specs = [{
-            "method": "GET",
-            "url": f"{base}/r/{sub}/new",
-            "params": {"limit": 100},
-            "headers": headers,
-        } for sub in subreddits]
+        sub_specs = [
+            {
+                "method": "GET",
+                "url": f"{base}/r/{sub}/new",
+                "params": {"limit": 100},
+                "headers": headers,
+            }
+            for sub in subreddits
+        ]
 
         sub_pairs = await batch_requests(
             self._client, self._context, sub_specs, limiter=RATE_LIMITER
@@ -95,7 +100,8 @@ class RedditResource(ConfigurableResource):
 
         results = [
             r.json().get("data", {}).get("children", [])
-            for _, r in sub_pairs if r is not None
+            for _, r in sub_pairs
+            if r is not None
         ]
         items = []
         for children in results:
@@ -110,7 +116,9 @@ class RedditResource(ConfigurableResource):
                             RawItem(
                                 url=f"https://reddit.com{d.get('permalink','')}",
                                 title=title,
-                                body=body[: config.issues.labeling.max_body_length_for_snippet],
+                                body=body[
+                                    : config.issues.labeling.max_body_length_for_snippet
+                                ],
                                 created_at=datetime.fromtimestamp(
                                     created, tz=timezone.utc
                                 ).isoformat(),
@@ -126,4 +134,8 @@ class RedditResource(ConfigurableResource):
                         )
 
         self._context.log.info(f"Reddit: {req_count} requests, {len(items)} items")
-        return items, {"requests": req_count, "subs": subreddits, "used_oauth": bool(token)}
+        return items, {
+            "requests": req_count,
+            "subs": subreddits,
+            "used_oauth": bool(token),
+        }

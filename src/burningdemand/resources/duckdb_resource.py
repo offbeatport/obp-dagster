@@ -10,7 +10,7 @@ from pydantic import Field, PrivateAttr
 
 class DuckDBResource(ConfigurableResource):
     db_path: str = Field(default="./data/burningdemand.duckdb")
-    schema_path: str = Field(default="src/burningdemand/schema/duckdb.sql")
+    schema_path: str = Field(default="src/burningdemand/model/duckdb.sql")
 
     _conn: Optional[Any] = PrivateAttr(default=None)
     _lock: Optional[FileLock] = PrivateAttr(default=None)
@@ -31,7 +31,9 @@ class DuckDBResource(ConfigurableResource):
         Only one run can hold the DuckDB connection at a time (avoids lock errors when
         materializing multiple partitions in parallel).
         """
-        lock_path = str(Path(self.db_path).with_suffix(Path(self.db_path).suffix + ".lock"))
+        lock_path = str(
+            Path(self.db_path).with_suffix(Path(self.db_path).suffix + ".lock")
+        )
         self._lock = FileLock(lock_path)
         self._lock.acquire()  # blocking; released in teardown_after_execution
         self._conn = self._get_conn()

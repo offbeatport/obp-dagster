@@ -7,7 +7,7 @@ from dagster import AssetExecutionContext, MaterializeResult, asset
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from burningdemand.schema.raw_items import RawItem
+from burningdemand.model.raw_items import RawItem
 from burningdemand.utils.config import config
 from burningdemand.utils.raw_utils import (
     materialize_raw,

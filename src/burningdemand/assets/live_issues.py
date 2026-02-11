@@ -33,7 +33,7 @@ async def live_issues(
         """
         SELECT g.*
         FROM gold.issues g
-        WHERE g.cluster_date = ?
+        WHERE g.group_date = ?
         """,
         [date],
     )
@@ -42,14 +42,14 @@ async def live_issues(
         return MaterializeResult(metadata={"synced": 0, "skipped": 0})
 
     date_escaped = str(date).replace('"', '\\"')
-    filter_expr = f'origin="collected" && cluster_date="{date_escaped} 00:00:00.000Z"'
+    filter_expr = f'origin="collected" && group_date="{date_escaped} 00:00:00.000Z"'
     existing_pb = pb.get_records("issues", filter_expr, per_page=500)
-    existing_by_cluster = {int(r["cluster_id"]): r["id"] for r in existing_pb}
+    existing_by_group = {int(r["group_id"]): r["id"] for r in existing_pb}
 
     to_create = []
     for _, issue in issues_df.iterrows():
-        cluster_id = int(issue["cluster_id"])
-        if cluster_id in existing_by_cluster:
+        group_id = int(issue["group_id"])
+        if group_id in existing_by_group:
             continue
         to_create.append(
             {
@@ -62,8 +62,8 @@ async def live_issues(
                 "status": "open",
                 "origin": "collected",
                 "reporter": pb.user_id,
-                "cluster_date": date,
-                "cluster_id": cluster_id,
+                "group_date": date,
+                "group_id": group_id,
             }
         )
 

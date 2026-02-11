@@ -61,6 +61,8 @@ class PainClassification(BaseModel):
     pain: float = Field(ge=0.0, le=1.0)
     would_pay: float = Field(ge=0.0, le=1.0)
     noise: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    lang: str = Field(default="en", description="ISO 639-1 language code, e.g. en, es")
 
 
 def extract_first_json_obj(text: str) -> dict:

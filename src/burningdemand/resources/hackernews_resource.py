@@ -9,7 +9,7 @@ from dagster import ConfigurableResource
 from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
-from burningdemand.schema.raw_items import RawItem
+from burningdemand.model.raw_items import RawItem
 from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds

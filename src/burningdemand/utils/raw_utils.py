@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, List
 from dagster import MaterializeResult
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from burningdemand.schema.raw_items import (
+from burningdemand.model.raw_items import (
     CollectedItems,
     RawComment,
     RawItem,
@@ -33,7 +33,9 @@ def parse_github_comments_list(comments: Dict[str, Any] | None) -> List[RawComme
         RawComment(
             body=((c or {}).get("body") or ""),
             updated_at=((c or {}).get("updatedAt") or (c or {}).get("createdAt") or ""),
-            reactions=parse_github_reaction_groups((c or {}).get("reactionGroups") or []),
+            reactions=parse_github_reaction_groups(
+                (c or {}).get("reactionGroups") or []
+            ),
         )
         for c in nodes
     ]

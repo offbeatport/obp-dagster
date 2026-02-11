@@ -1,4 +1,4 @@
-# burningdemand_dagster/assets/clusters.py
+# burningdemand_dagster/assets/groups.py
 import pandas as pd
 import numpy as np
 import hdbscan
@@ -16,10 +16,10 @@ from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 
 
-def clear_cluster_data_for_date(db: DuckDBResource, date: str) -> None:
-    """Remove existing cluster_assignments and clusters for this partition (enables rematerialization)."""
-    db.execute("DELETE FROM silver.cluster_assignments WHERE cluster_date = ?", [date])
-    db.execute("DELETE FROM silver.clusters WHERE cluster_date = ?", [date])
+def clear_group_data_for_date(db: DuckDBResource, date: str) -> None:
+    """Remove existing group_members and groups for this partition (enables rematerialization)."""
+    db.execute("DELETE FROM silver.group_members WHERE group_date = ?", [date])
+    db.execute("DELETE FROM silver.groups WHERE group_date = ?", [date])
 
 
 def load_embeddings_in_window(
@@ -67,91 +67,89 @@ def run_hdbscan(embeddings_array: np.ndarray) -> np.ndarray:
     return clusterer.fit_predict(embeddings_array)
 
 
-def compute_cluster_metrics(
+def compute_group_metrics(
     data: pd.DataFrame,
     embeddings_array: np.ndarray,
     labels: np.ndarray,
 ) -> Tuple[dict, int, float]:
-    """Compute per-cluster metrics (size, mean_distance, authority_score) and global noise/outlier_ratio."""
+    """Compute per-group metrics (size, mean_distance, authority_score) and global noise/outlier_ratio."""
     noise_count = int(np.sum(labels == -1))
     outlier_ratio = float(noise_count / len(labels)) if len(labels) > 0 else 0.0
     unique_labels = np.unique(labels)
-    cluster_ids = unique_labels[unique_labels != -1]
+    group_ids = unique_labels[unique_labels != -1]
 
-    cluster_metrics = {}
-    for cid in cluster_ids:
-        cluster_mask = labels == cid
-        cluster_points = embeddings_array[cluster_mask]
-        cluster_data = data.iloc[np.where(cluster_mask)[0]]
-        centroid = np.mean(cluster_points, axis=0)
-        distances = np.linalg.norm(cluster_points - centroid, axis=1)
+    group_metrics = {}
+    for gid in group_ids:
+        group_mask = labels == gid
+        group_points = embeddings_array[group_mask]
+        group_data = data.iloc[np.where(group_mask)[0]]
+        centroid = np.mean(group_points, axis=0)
+        distances = np.linalg.norm(group_points - centroid, axis=1)
         mean_distance = float(np.mean(distances))
-        vote_sum = int(cluster_data["vote_count"].sum())
-        reaction_sum = int(cluster_data["reactions_count"].sum())
-        comment_sum = int(cluster_data["comments_count"].sum())
-        # Combine votes and reactions with a simple weighting:
-        #   authority_score = votes + 0.5 * comments + 0.5 * reactions
+        vote_sum = int(group_data["vote_count"].sum())
+        reaction_sum = int(group_data["reactions_count"].sum())
+        comment_sum = int(group_data["comments_count"].sum())
         authority_score = vote_sum + comment_sum * 0.5 + reaction_sum * 0.5
-        cluster_metrics[int(cid)] = {
-            "size": int(np.sum(cluster_mask)),
+        group_metrics[int(gid)] = {
+            "size": int(np.sum(group_mask)),
             "mean_distance": mean_distance,
             "authority_score": float(authority_score),
             "vote_sum": vote_sum,
             "reaction_sum": reaction_sum,
             "comment_sum": comment_sum,
         }
-    return cluster_metrics, noise_count, outlier_ratio
+    return group_metrics, noise_count, outlier_ratio
 
 
-def persist_clusters(
+def persist_groups(
     db: DuckDBResource,
     date: str,
     data: pd.DataFrame,
     labels: np.ndarray,
-    cluster_metrics: dict,
+    group_metrics: dict,
     outlier_ratio: float,
 ) -> int:
-    """Write cluster_assignments and cluster metadata to DB. Returns number of cluster rows written."""
+    """Write group_members and group metadata to DB. Returns number of group rows written."""
     assignments_df = pd.DataFrame(
         [
             {
                 "url_hash": data["url_hash"].iloc[i],
-                "cluster_date": date,
-                "cluster_id": int(labels[i]),
+                "group_date": date,
+                "group_id": int(labels[i]),
             }
             for i in range(len(data))
         ]
     )
     db.upsert_df(
         "silver",
-        "cluster_assignments",
+        "group_members",
         assignments_df,
-        ["url_hash", "cluster_date", "cluster_id"],
+        ["url_hash", "group_date", "group_id"],
     )
-    for cid, metrics in cluster_metrics.items():
+    for gid, metrics in group_metrics.items():
         db.execute(
             """
-            INSERT INTO silver.clusters (
-                cluster_date, cluster_id, cluster_size,
+            INSERT INTO silver.groups (
+                group_date, group_id, group_size,
                 outlier_ratio, mean_distance, authority_score
             )
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (cluster_date, cluster_id) DO UPDATE SET
-                cluster_size = EXCLUDED.cluster_size,
+            ON CONFLICT (group_date, group_id) DO UPDATE SET
+                group_size = EXCLUDED.group_size,
                 outlier_ratio = EXCLUDED.outlier_ratio,
                 mean_distance = EXCLUDED.mean_distance,
                 authority_score = EXCLUDED.authority_score
             """,
             [
                 date,
-                cid,
+                gid,
                 metrics["size"],
                 outlier_ratio,
                 metrics["mean_distance"],
                 metrics["authority_score"],
             ],
         )
-    return len(cluster_metrics)
+    return len(group_metrics)
 
 
 @asset(
@@ -159,9 +157,9 @@ def persist_clusters(
     group_name="silver",
     deps=["embeddings"],
     auto_materialize_policy=AutoMaterializePolicy.eager(),
-    description="Cluster items by similarity using HDBSCAN on stored embeddings. Uses rolling window (last 7 days) to allow clusters to grow day-over-day and detect heat signals. Groups similar issues together, allows noise/unclustered items, and stores quality metrics (outlier_ratio, mean_distance, authority_score). Authority score = sum of votes + 0.5 * comments to distinguish high-engagement signals from noise.",
+    description="Group items by similarity using HDBSCAN on stored embeddings. Uses rolling window to allow groups to grow day-over-day. Groups similar issues together, allows noise, stores quality metrics.",
 )
-def clusters(
+def groups(
     context: AssetExecutionContext,
     db: DuckDBResource,
 ) -> MaterializeResult:
@@ -169,36 +167,36 @@ def clusters(
     date_obj = datetime.strptime(date, "%Y-%m-%d")
     window_days = (
         config.clustering.rolling_window_days - 1
-    )  # e.g. 7 days = 6 days before + partition day
+    )
     window_start = (date_obj - timedelta(days=window_days)).strftime("%Y-%m-%d")
 
     context.log.info(
-        f"Clustering rolling window: {window_start} to {date} ({config.clustering.rolling_window_days} days)"
+        f"Grouping rolling window: {window_start} to {date} ({config.clustering.rolling_window_days} days)"
     )
 
-    clear_cluster_data_for_date(db, date)
+    clear_group_data_for_date(db, date)
     data, embeddings_array = load_embeddings_in_window(db, window_start, date)
 
     if data is None or embeddings_array is None:
         return MaterializeResult(
             metadata={
-                "clusters": 0,
+                "groups": 0,
                 "items": 0,
                 "noise": 0,
                 "status": "no_items_in_window",
             }
         )
 
-    context.log.info(f"Clustering {len(data)} items with stored embeddings...")
+    context.log.info("Grouping %s items with stored embeddings...", len(data))
     labels = run_hdbscan(embeddings_array)
-    cluster_metrics, noise_count, outlier_ratio = compute_cluster_metrics(
+    group_metrics, noise_count, outlier_ratio = compute_group_metrics(
         data, embeddings_array, labels
     )
-    created_clusters = persist_clusters(
-        db, date, data, labels, cluster_metrics, outlier_ratio
+    created_groups = persist_groups(
+        db, date, data, labels, group_metrics, outlier_ratio
     )
 
-    sizes = [m["size"] for m in cluster_metrics.values()] if cluster_metrics else [0]
+    sizes = [m["size"] for m in group_metrics.values()] if group_metrics else [0]
     sizes_sorted = sorted(sizes) if sizes else [0]
     p50 = sizes_sorted[len(sizes_sorted) // 2] if sizes_sorted else 0
     p90 = (
@@ -207,21 +205,21 @@ def clusters(
         else sizes_sorted[-1] if sizes_sorted else 0
     )
     authority_scores = (
-        [m["authority_score"] for m in cluster_metrics.values()]
-        if cluster_metrics
+        [m["authority_score"] for m in group_metrics.values()]
+        if group_metrics
         else [0]
     )
 
     return MaterializeResult(
         metadata={
             "items": int(len(data)),
-            "clusters": int(created_clusters),
+            "groups": int(created_groups),
             "noise": int(noise_count),
             "outlier_ratio": float(outlier_ratio),
-            "cluster_size_min": int(min(sizes)) if sizes else 0,
-            "cluster_size_p50": int(p50),
-            "cluster_size_p90": int(p90),
-            "cluster_size_max": int(max(sizes)) if sizes else 0,
+            "group_size_min": int(min(sizes)) if sizes else 0,
+            "group_size_p50": int(p50),
+            "group_size_p90": int(p90),
+            "group_size_max": int(max(sizes)) if sizes else 0,
             "authority_score_max": (
                 float(max(authority_scores)) if authority_scores else 0.0
             ),
