@@ -39,10 +39,10 @@ def _pr_to_raw_item(d: Dict[str, Any]) -> RawItem:
         license=license_name,
         comments_list=parse_github_comments_list(d.get("comments")),
         comments_count=((d.get("comments") or {}).get("totalCount") or 0),
-        upvotes_count=0,
-        post_type="pull_request",
         reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
         reactions_count=((d.get("reactions") or {}).get("totalCount") or 0),
+        upvotes_count=0,
+        post_type="pull_request",
         labels=parse_github_labels(d.get("labels")),
     )
 

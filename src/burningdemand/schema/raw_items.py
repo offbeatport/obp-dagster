@@ -2,7 +2,10 @@
 
 import dataclasses
 import json
-from typing import Any, Dict, List
+import logging
+from typing import Any, Callable, Dict, List
+
+log = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -73,13 +76,75 @@ RAW_ITEMS_TABLE_COLUMNS = [
     "labels",
 ]
 
+ALLOWED_LICENSES = [
+    "BSL-1.0",
+    "UPL-1.0",
+    "BlueOak-1.0.0",
+    "Zlib",
+    "PostgreSQL",
+    "ISC",
+    "ECL-2.0",
+    "CC0-1.0",
+    "Unlicense",
+    "MS-PL",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSD-3-Clause-Clear",
+    "0BSD",
+    "MIT",
+    "MIT-0",
+    "AFL-3.0",
+    "NCSA",
+]
+
+# Minimum comments to keep an item (0 = disabled). Set to 1+ to filter out items with no comments.
+HARD_FILTER_MIN_COMMENTS = 0
+
+
+def _apply_filter(
+    items: List[RawItem],
+    name: str,
+    predicate: Callable[[RawItem], bool],
+) -> List[RawItem]:
+    """Apply a filter; log if any items removed."""
+    kept = [i for i in items if predicate(i)]
+    n_removed = len(items) - len(kept)
+    if n_removed > 0:
+        log.info(
+            "%s: removed %s items (kept %s of %s)",
+            name,
+            n_removed,
+            len(kept),
+            len(items),
+        )
+    return kept
+
 
 class CollectedItems:
     """Items plus metadata from a collection run. Converts to DataFrame for bronze.raw_items."""
 
     def __init__(self, items: List[RawItem], meta: Dict[str, Any]) -> None:
-        self.items = items
+        self.items = self._hard_filter_items(items)
         self.meta = meta
+
+    def _hard_filter_items(self, items: List[RawItem]) -> List[RawItem]:
+        """Apply hard filters in sequence. Each filter logs when it removes items."""
+        allowed_licenses = frozenset(ALLOWED_LICENSES)
+
+        items = _apply_filter(
+            items,
+            "License Filter",
+            lambda i: (i.license or "").strip() in allowed_licenses,
+        )
+
+        items = _apply_filter(
+            items,
+            "Min Comments Filter",
+            lambda i: (i.comments_count or 0) >= HARD_FILTER_MIN_COMMENTS,
+        )
+
+        return items
 
     def to_df(self, source: str, date: str) -> pd.DataFrame:
         """Build a normalized DataFrame for upsert into bronze.raw_items."""
