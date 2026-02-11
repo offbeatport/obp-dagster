@@ -1,11 +1,11 @@
-"""Shared helpers for GitHub GraphQL structures."""
+"""Shared helpers for raw data collection: GitHub parsing and materialization."""
 
 from typing import Any, Dict, Iterable, List
 
 from dagster import MaterializeResult
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from burningdemand.model.raw_items import (
+from .model import (
     CollectedItems,
     RawComment,
     RawItem,

@@ -11,7 +11,7 @@ from dagster import (
 from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from burningdemand.utils.issues_utils import (
+from .utils import (
     clear_issues_data_for_date,
     get_groups_for_date,
     label_group_with_llm,

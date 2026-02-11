@@ -1,6 +1,4 @@
-"""
-Helpers for the issues asset: group queries, LLM labeling, and DB writes.
-"""
+"""Helpers for the issues asset: group queries, LLM labeling, and DB writes."""
 
 import asyncio
 import logging
@@ -13,9 +11,10 @@ import pandas as pd
 from litellm import acompletion
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from burningdemand.utils.cluster_representatives import get_cluster_representatives
+from burningdemand.assets.groups.representatives import get_cluster_representatives
 from burningdemand.utils.config import config
-from burningdemand.utils.llm_schema import IssueLabel, extract_first_json_obj
+from .model import IssueLabel, extract_first_json_obj
+from .prompt import build_system_prompt, build_user_prompt
 
 
 def clear_issues_data_for_date(db: DuckDBResource, date: str) -> None:
@@ -69,9 +68,7 @@ def prepare_groups(
             snippets_by_group[gid] = ""
             continue
 
-        embeddings_array = np.array(
-            group_data["embedding"].tolist(), dtype=np.float32
-        )
+        embeddings_array = np.array(group_data["embedding"].tolist(), dtype=np.float32)
         group_items = pd.DataFrame(
             {
                 "title": group_data["title"],
@@ -111,7 +108,7 @@ async def label_group_with_llm(
 ) -> None:
     """Label one group via LLM. Retries on transient errors with backoff."""
     async with sem:
-        prompt = config.build_label_prompt(titles, size, snippets)
+        prompt = build_user_prompt(titles, size, snippets)
         label_data = None
         last_error = None
         model = config.issues.llm.model
@@ -123,7 +120,10 @@ async def label_group_with_llm(
                     base_url=config.issues.llm.base_url,
                     api_key=config.issues.llm.api_key,
                     messages=[
-                        {"role": "system", "content": config.build_system_prompt()},
+                        {
+                            "role": "system",
+                            "content": build_system_prompt(),
+                        },
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=config.issues.llm.max_tokens,

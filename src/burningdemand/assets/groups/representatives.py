@@ -1,5 +1,5 @@
-# burningdemand_dagster/utils/cluster_representatives.py
-"""Utility functions for computing cluster representatives on-the-fly."""
+"""Select representative items from a group (closest to centroid with diversity)."""
+
 import pandas as pd
 import numpy as np
 from typing import List, Optional, Tuple
@@ -95,10 +95,10 @@ def get_cluster_representatives(
     max_body_length: int,
 ) -> Tuple[List[str], str]:
     """
-    Get representative titles and snippets for a cluster.
+    Get representative titles and snippets for a group.
 
     Args:
-        items_df: DataFrame with cluster items (must have 'title', 'body', 'source' columns)
+        items_df: DataFrame with group items (must have 'title', 'body', 'source' columns)
         embeddings_array: numpy array of shape (n_items, embedding_dim)
         max_representatives_count: Number of representatives to select
         max_snippets_count: Number of snippets to include

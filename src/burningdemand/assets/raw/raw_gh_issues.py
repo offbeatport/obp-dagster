@@ -1,15 +1,14 @@
-"""Raw GitHub discussions asset."""
+"""Raw GitHub issues asset."""
 
 from typing import Any, Dict
-
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from burningdemand.model.raw_items import RawComment, RawItem
+from .model import RawItem
 from burningdemand.utils.config import config
-from burningdemand.utils.raw_utils import (
+from .materialize import (
     materialize_raw,
     parse_github_comments_list,
     parse_github_labels,
@@ -25,19 +24,6 @@ def gh_to_raw_item(d: Dict[str, Any]) -> RawItem:
     license_info = repository.get("licenseInfo") or {}
     license_name = license_info.get("spdxId") or ""
 
-    comments = parse_github_comments_list(d.get("comments") or {})
-    comments_count = (d.get("comments") or {}).get("totalCount") or 0
-
-    answer = parse_github_comments_list({"nodes": [d.get("answer") or {}]})
-    answer_with_prefix = [
-        RawComment(
-            body=f"This is the answer to the discussion: {a.body}",
-            reactions=a.reactions,
-        )
-        for a in answer
-    ]
-    comments_list = [*answer_with_prefix, *comments]
-
     return RawItem(
         url=d.get("url"),
         title=d.get("title") or "",
@@ -45,17 +31,18 @@ def gh_to_raw_item(d: Dict[str, Any]) -> RawItem:
         created_at=d.get("createdAt") or "",
         org_name=org,
         product_name=product,
+        product_desc=repository.get("description") or "",
         product_stars=repository.get("stargazerCount") or 0,
         product_forks=repository.get("forkCount") or 0,
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
-        source_post_id=str(d.get("id")) or "",
         license=license_name,
-        comments_list=comments_list,
-        comments_count=comments_count,
+        comments_list=parse_github_comments_list(d.get("comments")),
+        comments_count=d.get("comments").get("totalCount") or 0,
         reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
-        upvotes_count=d.get("upvoteCount") or 0,
-        post_type="discussion",
+        source_post_id=str(d.get("id")) or "",
+        upvotes_count=0,
+        post_type="issue",
         labels=parse_github_labels(d.get("labels")),
     )
 
@@ -63,34 +50,19 @@ def gh_to_raw_item(d: Dict[str, Any]) -> RawItem:
 @asset(
     partitions_def=daily_partitions,
     group_name="bronze",
-    description="Raw GitHub discussions per day. Writes into bronze.raw_items (source=gh_discussions, post_type=discussion).",
+    description="Raw GitHub issues per day. Writes into bronze.raw_items (source=gh_issues, post_type=issue).",
 )
-async def raw_gh_discussions(
+async def raw_gh_issues(
     context: AssetExecutionContext,
     db: DuckDBResource,
     github: GitHubResource,
 ) -> MaterializeResult:
-
     date = context.partition_key
-    cfg = config.raw_gh_discussions
+    cfg = config.raw_gh_issues
 
     node_fragment = f"""
-        ... on Discussion {{
-            id              
-            url 
-            title 
-            body 
-            createdAt
-            upvoteCount
-            isAnswered
-            closed
-            answer {{  
-                body
-                updatedAt
-                reactions {{ totalCount }}
-                reactionGroups {{ content reactors {{ totalCount }} }} 
-            }}
-            labels(first:{cfg.max_labels}) {{ nodes {{ name }} }}
+        ... on Issue {{  
+            id databaseId url title body createdAt 
             repository {{ 
                 nameWithOwner
                 description
@@ -99,31 +71,30 @@ async def raw_gh_discussions(
                 forkCount
                 watchers {{ totalCount }}
             }} 
+            labels(first:{cfg.max_labels}) {{ nodes {{ name }} }}
             comments(last: {cfg.max_comments}) {{
-                totalCount
+                totalCount 
                 nodes {{
                     body
                     updatedAt
                     reactionGroups {{ content reactors {{ totalCount }} }}
                 }}
             }} 
-            reactions {{ totalCount }} 
             reactionGroups {{ content reactors {{ totalCount }} }}
+            reactions {{ totalCount }}    
         }}
     """
-
-    query_suffix = f"comments:>={cfg.min_comments} sort:interactions-desc"
-
+    query_suffix = f"is:issue comments:>={cfg.min_comments} reactions:>={cfg.min_reactions} sort:interactions-desc"
     raw_items, meta = await github.search(
         date,
         node_fragment,
+        type="ISSUE",
         query_suffix=query_suffix,
-        type="DISCUSSION",
         hour_splits=cfg.queries_per_day,
         per_page=cfg.per_page,
         max_parallel=cfg.max_parallel,
     )
-
-    items = [item for item in (gh_to_raw_item(d) for d in raw_items)]
-
-    return await materialize_raw(db, items, meta, "gh_discussions", date)
+    items = [
+        item for item in (gh_to_raw_item(d) for d in raw_items) if item is not None
+    ]
+    return await materialize_raw(db, items, meta, "gh_issues", date)

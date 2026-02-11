@@ -1,4 +1,4 @@
-# burningdemand_dagster/assets/live_evidence.py
+# burningdemand_dagster/assets/live_evidence/asset.py
 import asyncio
 from dagster import (
     AssetExecutionContext,

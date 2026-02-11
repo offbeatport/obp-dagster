@@ -6,7 +6,7 @@ from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.reddit_resource import RedditResource
 
-from burningdemand.utils.raw_utils import materialize_raw
+from .materialize import materialize_raw
 
 
 @asset(

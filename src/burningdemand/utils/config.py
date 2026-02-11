@@ -14,9 +14,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from burningdemand.utils.llm_schema import CATEGORIES
-
-
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -115,7 +112,6 @@ class Config(BaseModel):
     embeddings: EmbeddingConfig
     clustering: ClusteringConfig
     keywords: dict[str, Any]
-    prompts: dict[str, Any]
 
     def _source_section(self, source: str | None) -> dict[str, Any]:
         if not source:
@@ -161,37 +157,6 @@ class Config(BaseModel):
         # Required; normal KeyError if missing.
         return list(self.keywords["reddit"]["subreddits"])
 
-    def build_system_prompt(self) -> str:
-        raw = self.prompts["system_prompt"]
-        return str(raw).format(CATEGORIES=", ".join(CATEGORIES))
-
-    def build_system_prompt_lite(self) -> str:
-        raw = self.prompts["system_prompt_lite"]
-        return str(raw)
-
-    def build_classification_prompt(self, items_text: list[str]) -> str:
-        """Build user prompt for batch pain classification."""
-        lines = [
-            "Classify each post. Return a JSON array of objects, one per post, in the same order:",
-            '[{"pain": 0.0-1.0, "would_pay": 0.0-1.0, "noise": 0.0-1.0}, ...]',
-            "",
-            "Posts:",
-        ]
-        for i, t in enumerate(items_text, 1):
-            lines.append(f"--- Post {i} ---")
-            lines.append(t[:8000] if t else "(empty)")  # cap per-item for token safety
-        return "\n".join(lines)
-
-    def build_label_prompt(self, titles: list[str], size: int, snippets: str) -> str:
-        titles_str = "\n".join(f"- {t}" for t in titles if t)
-        snippets_section = f"\n\nSnippets:\n{snippets}" if snippets else ""
-        return (
-            "# PROBLEM DATA TO ANALYZE:\n\n"
-            f"Number of issues: {len(titles)} (sampled from a cluster of {size}):\n\n"
-            f"Titles:\n{titles_str}"
-            f"{snippets_section}\n"
-        )
-
 
 def load_config(config_dir: Path | None = None) -> Config:
     config_dir = config_dir or Path(__file__).resolve().parent.parent / "config"
@@ -200,7 +165,6 @@ def load_config(config_dir: Path | None = None) -> Config:
     data: dict[str, Any] = {
         **scalar,
         "keywords": _read_yaml(config_dir / "keywords.yaml"),
-        "prompts": _read_yaml(config_dir / "prompts.yaml"),
     }
 
     # Let Pydantic surface any validation errors directly.

@@ -1,4 +1,4 @@
-# burningdemand_dagster/assets/groups.py
+# burningdemand_dagster/assets/groups/asset.py
 import pandas as pd
 import numpy as np
 import hdbscan

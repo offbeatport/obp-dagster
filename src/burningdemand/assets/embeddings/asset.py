@@ -1,4 +1,4 @@
-# burningdemand_dagster/assets/embeddings.py
+# burningdemand_dagster/assets/embeddings/asset.py
 import pandas as pd
 from dagster import (
     AssetExecutionContext,
