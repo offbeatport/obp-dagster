@@ -23,15 +23,6 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
     license_info = repository.get("licenseInfo") or {}
     license_name = license_info.get("spdxId") or ""
 
-    comments = d.get("comments") or {}
-    reviews = d.get("reviews") or {}
-
-    comments_list = parse_github_comments_list(comments)
-    comments_count = comments.get("totalCount") or 0
-
-    reviews_list = parse_github_comments_list(reviews)
-    reviews_count = reviews.get("totalCount") or 0
-
     return RawItem(
         url=d.get("url"),
         title=d.get("title") or "",
@@ -43,8 +34,8 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
         license=license_name,
         created_at=d.get("createdAt") or "",
-        comments_list=comments_list + reviews_list,
-        comments_count=comments_count + reviews_count,
+        comments_list=parse_github_comments_list(d.get("comments") or {}),
+        comments_count=(d.get("comments") or {}).get("totalCount") or 0,
         upvotes_count=d.get("upvoteCount") or 0,
         post_type=post_type,
         reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
@@ -107,6 +98,7 @@ async def raw_gh_discussions(
         type="DISCUSSION",
         hour_splits=cfg.queries_per_day,
         per_page=cfg.per_page,
+        max_parallel=cfg.max_parallel,
     )
 
     items = [item for item in (gh_to_raw_item(d, "discussion") for d in raw_items)]

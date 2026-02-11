@@ -92,6 +92,7 @@ async def raw_gh_issues(
         query_suffix=query_suffix,
         hour_splits=cfg.queries_per_day,
         per_page=cfg.per_page,
+        max_parallel=cfg.max_parallel,
     )
     items = [
         item

@@ -66,7 +66,7 @@ async def raw_gh_pull_requests(
             createdAt
             state
             merged
-            labels(first:20) {{ nodes {{ name }} }}
+            labels(first:{cfg.max_labels}) {{ nodes {{ name }} }}
             repository {{ 
                 nameWithOwner
                 description
@@ -83,14 +83,6 @@ async def raw_gh_pull_requests(
                     reactionGroups {{ content reactors {{ totalCount }} }}
                 }}
             }} 
-            reviews(last:{cfg.max_reviews}) {{ 
-                totalCount
-                nodes {{
-                    body
-                    updatedAt
-                    reactionGroups {{ content reactors {{ totalCount }} }}
-                }}
-            }}          
             reactions {{ totalCount }}
             reactionGroups {{ content reactors {{ totalCount }} }}
         }}
@@ -105,6 +97,7 @@ async def raw_gh_pull_requests(
         query_suffix=query_suffix,
         hour_splits=cfg.queries_per_day,
         per_page=cfg.per_page,
+        max_parallel=cfg.max_parallel,
     )
 
     wontfix_suffix = "is:pr sort:updated-desc label:wontfix reason:not_planned"
@@ -115,6 +108,7 @@ async def raw_gh_pull_requests(
         query_suffix=wontfix_suffix,
         hour_splits=cfg.queries_per_day,
         per_page=cfg.per_page,
+        max_parallel=cfg.max_parallel,
     )
 
     # Merge, deduplicating by id
@@ -124,4 +118,8 @@ async def raw_gh_pull_requests(
 
     all_items = list(by_id.values())
     items = [_pr_to_raw_item(d) for d in all_items]
+    meta = {
+        "requests": int(meta.get("requests", 0)) + int(wontfix_meta.get("requests", 0)),
+        "ok": int(meta.get("ok", 0)) + int(wontfix_meta.get("ok", 0)),
+    }
     return await materialize_raw(db, items, meta, "gh_pull_requests", date)

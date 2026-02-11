@@ -1,5 +1,6 @@
 raw_gh_issues:
   queries_per_day: 4 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  max_parallel: 2 # Max number of GitHub range queries to run concurrently
   min_reactions: 1 # Only return issues with at least this many reactions
   min_comments: 1 # Only return issues with at least this many comments
   max_comments: 20 # Number of comments to fetch per issue
@@ -8,6 +9,7 @@ raw_gh_issues:
 
 raw_gh_discussions:
   queries_per_day: 3 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  max_parallel: 2 # Max number of GitHub range queries to run concurrently
   min_comments: 1 # Only return discussions with at least this many comments
   max_labels: 20 # Number of comments to fetch per discussion
   max_comments: 20 # Number of comments to fetch per discussion
@@ -15,10 +17,10 @@ raw_gh_discussions:
 
 raw_gh_pull_requests:
   queries_per_day: 4 # Number of queries to make per day (each query is a day split into queries_per_day hours)
+  max_parallel: 2 # Max number of GitHub range queries to run concurrently
   min_comments: 1 # Only return pull requests with at least this many comments
-  max_labels: 20 # Number of labels to fetch per pull request
-  max_comments: 20 # Number of comments to fetch per pull request
-  max_reviews: 20 # Number of reviews to fetch per pull request
+  max_labels: 10 # Number of labels to fetch per pull request
+  max_comments: 10 # Number of comments to fetch per pull request
   per_page: 50 # Number of pull requests to fetch per request
 
 issues:

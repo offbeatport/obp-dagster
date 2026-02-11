@@ -68,6 +68,7 @@ class ClusteringConfig(BaseModel):
 
 class RawGhIssuesAssetConfig(BaseModel):
     queries_per_day: int
+    max_parallel: int
     min_reactions: int
     min_comments: int
     max_comments: int
@@ -77,6 +78,7 @@ class RawGhIssuesAssetConfig(BaseModel):
 
 class RawGhDiscussionsAssetConfig(BaseModel):
     queries_per_day: int
+    max_parallel: int = 2
     min_comments: int
     max_comments: int
     max_labels: int
@@ -85,9 +87,9 @@ class RawGhDiscussionsAssetConfig(BaseModel):
 
 class RawGhPullRequestsAssetConfig(BaseModel):
     queries_per_day: int
+    max_parallel: int = 2
     min_comments: int
     max_comments: int
-    max_reviews: int
     max_labels: int
     per_page: int
 
