@@ -17,7 +17,7 @@ from burningdemand.utils.raw_utils import (
 )
 
 
-def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
+def gh_to_raw_item(d: Dict[str, Any]) -> RawItem:
     """Convert GitHub GQL node to RawItem."""
     repository = d.get("repository") or {}
     license_info = repository.get("licenseInfo") or {}
@@ -27,20 +27,20 @@ def gh_to_raw_item(d: Dict[str, Any], post_type: str) -> RawItem:
         url=d.get("url"),
         title=d.get("title") or "",
         body=d.get("body") or "",
+        created_at=d.get("createdAt") or "",
         org_name=repository.get("name") or "",
         product_name=(repository.get("owner") or {}).get("login", ""),
         product_stars=repository.get("stargazerCount") or 0,
         product_forks=repository.get("forkCount") or 0,
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
+        source_post_id=str(d.get("id")) or "",
         license=license_name,
-        created_at=d.get("createdAt") or "",
         comments_list=parse_github_comments_list(d.get("comments") or {}),
         comments_count=(d.get("comments") or {}).get("totalCount") or 0,
-        upvotes_count=d.get("upvoteCount") or 0,
-        post_type=post_type,
         reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
-        source_post_id=str(d.get("id")) or "",
+        upvotes_count=d.get("upvoteCount") or 0,
+        post_type="discussion",
         labels=parse_github_labels(d.get("labels")),
     )
 
@@ -101,6 +101,6 @@ async def raw_gh_discussions(
         max_parallel=cfg.max_parallel,
     )
 
-    items = [item for item in (gh_to_raw_item(d, "discussion") for d in raw_items)]
+    items = [item for item in (gh_to_raw_item(d) for d in raw_items)]
 
     return await materialize_raw(db, items, meta, "gh_discussions", date)
