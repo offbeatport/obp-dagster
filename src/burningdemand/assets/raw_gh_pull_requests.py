@@ -17,7 +17,7 @@ from burningdemand.utils.raw_utils import (
 )
 
 
-def _pr_to_raw_item(d: Dict[str, Any]) -> RawItem:
+def _to_raw(d: Dict[str, Any]) -> RawItem:
     repository = d.get("repository") or {}
     repo = repository.get("nameWithOwner") or ""
     org, product = (repo.split("/", 1) + [""])[:2]
@@ -91,7 +91,6 @@ async def raw_gh_pull_requests(
         }}
     """
 
-    # Main slice: PRs with enough discussion
     query_suffix = f"is:pr comments:>={cfg.min_comments} sort:updated-desc"
     raw_items, meta = await github.search(
         date,
@@ -103,26 +102,5 @@ async def raw_gh_pull_requests(
         max_parallel=cfg.max_parallel,
     )
 
-    wontfix_suffix = "is:pr sort:updated-desc label:wontfix reason:not_planned"
-    wontfix_items, wontfix_meta = await github.search(
-        date,
-        node_fragment,
-        type="ISSUE",
-        query_suffix=wontfix_suffix,
-        hour_splits=cfg.queries_per_day,
-        per_page=cfg.per_page,
-        max_parallel=cfg.max_parallel,
-    )
-
-    # Merge, deduplicating by id
-    by_id: dict[str, Dict[str, Any]] = {d["id"]: d for d in raw_items}
-    for d in wontfix_items:
-        by_id.setdefault(d["id"], d)
-
-    all_items = list(by_id.values())
-    items = [_pr_to_raw_item(d) for d in all_items]
-    meta = {
-        "requests": int(meta.get("requests", 0)) + int(wontfix_meta.get("requests", 0)),
-        "ok": int(meta.get("ok", 0)) + int(wontfix_meta.get("ok", 0)),
-    }
+    items = [item for item in (_to_raw(d) for d in raw_items) if item is not None]
     return await materialize_raw(db, items, meta, "gh_pull_requests", date)

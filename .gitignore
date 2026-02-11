@@ -107,4 +107,5 @@ yarn-error.log*
 docker-compose.override.yml
 
 data
+data_bk
 .tmp_*
