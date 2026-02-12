@@ -12,7 +12,7 @@ from pyrate_limiter.limiter_factory import create_sqlite_limiter
 from burningdemand.assets.raw.model import RawItem
 from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
-from burningdemand.utils.url import iso_date_to_utc_bounds
+from burningdemand.utils.url import iso_date_to_utc_bounds, normalize_url, url_hash
 
 RATE_LIMITER = create_sqlite_limiter(
     rate_per_duration=60,
@@ -112,9 +112,11 @@ class RedditResource(ConfigurableResource):
                     title = d.get("title") or ""
                     body = d.get("selftext") or ""
                     if config.matches_keywords(f"{title} {body}", "reddit"):
+                        url = normalize_url(f"https://reddit.com{d.get('permalink','')}")
                         items.append(
                             RawItem(
-                                url=f"https://reddit.com{d.get('permalink','')}",
+                                url=url,
+                                url_hash=url_hash(url),
                                 title=title,
                                 body=body[
                                     : config.issues.labeling.max_body_length_for_snippet
@@ -125,7 +127,7 @@ class RedditResource(ConfigurableResource):
                                 source_post_id=str(d.get("id") or ""),
                                 comments_list=[],
                                 comments_count=d.get("num_comments", 0) or 0,
-                                vote_count=d.get("score", 0) or 0,
+                                upvotes_count=d.get("score", 0) or 0,
                                 post_type="post",
                                 reactions_count=0,
                                 org_name="",

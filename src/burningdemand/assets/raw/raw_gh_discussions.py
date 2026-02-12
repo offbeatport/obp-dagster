@@ -4,59 +4,58 @@ from typing import Any, Dict
 
 from dagster import AssetExecutionContext, MaterializeResult, asset
 
+from burningdemand.assets.raw.github import (
+    get_comments,
+    get_reactions_groups,
+)
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from .model import RawComment, RawItem
 from burningdemand.utils.config import config
-from .materialize import (
-    materialize_raw,
-    parse_github_comments_list,
-    parse_github_labels,
-    parse_github_reaction_groups,
-)
+from burningdemand.utils.url import normalize_url, url_hash
+
+from .model import RawComment, RawItem
+from .materialize import materialize_raw
 
 
 def gh_to_raw_item(d: Dict[str, Any]) -> RawItem:
     """Convert GitHub GQL node to RawItem."""
+    url = normalize_url(d.get("url") or "")
     repository = d.get("repository") or {}
     name_with_owner = repository.get("nameWithOwner") or ""
     org, product = (name_with_owner.split("/", 1) + [""])[:2]
     license_info = repository.get("licenseInfo") or {}
     license_name = license_info.get("spdxId") or ""
+    labels = d.get("labels") or {}
 
-    comments = parse_github_comments_list(d.get("comments") or {})
-    comments_count = (d.get("comments") or {}).get("totalCount") or 0
-
-    answer = parse_github_comments_list({"nodes": [d.get("answer") or {}]})
-    answer_with_prefix = [
-        RawComment(
-            body=f"This is the answer to the discussion: {a.body}",
-            reactions=a.reactions,
+    answer_node = d.get("answer") or {}
+    answer_comment = get_comments({"comments": {"nodes": [answer_node]}})
+    if answer_comment and len(answer_comment) > 0:
+        answer_comment[0].body = (
+            f"This is the answer to the discussion" + answer_comment[0].body
         )
-        for a in answer
-    ]
-    comments_list = [*answer_with_prefix, *comments]
 
     return RawItem(
-        url=d.get("url"),
+        url=url,
+        url_hash=url_hash(url),
         title=d.get("title") or "",
         body=d.get("body") or "",
         created_at=d.get("createdAt") or "",
         org_name=org,
         product_name=product,
+        product_desc=repository.get("description") or "",
         product_stars=repository.get("stargazerCount") or 0,
         product_forks=repository.get("forkCount") or 0,
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
         source_post_id=str(d.get("id")) or "",
         license=license_name,
-        comments_list=comments_list,
-        comments_count=comments_count,
-        reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
+        comments_list=get_comments(d),
+        comments_count=(d.get("comments") or {}).get("totalCount") or 0,
+        reactions_groups=get_reactions_groups(d),
         reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
         upvotes_count=d.get("upvoteCount") or 0,
         post_type="discussion",
-        labels=parse_github_labels(d.get("labels")),
+        labels=[n.get("name") or "" for n in (labels.get("nodes"))],
     )
 
 

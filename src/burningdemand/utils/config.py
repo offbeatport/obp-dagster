@@ -7,12 +7,12 @@ If required keys are missing or types are wrong, import will fail fast.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
+
 
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -27,7 +27,6 @@ class LlmConfig(BaseModel):
     model: str
     base_url: str
     max_tokens: int
-    api_key: str | None = None
 
 
 class LabelingConfig(BaseModel):
@@ -47,6 +46,7 @@ class ClassificationConfig(BaseModel):
     max_body_length: int
     max_comment_length: int
     pain_threshold: float
+    max_concurrent_batches: int = 5
     llm: LlmConfig
 
 

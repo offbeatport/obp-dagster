@@ -1,7 +1,7 @@
 import duckdb
 import pandas as pd
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Type, Union
 
 from dagster import ConfigurableResource
 from filelock import FileLock
@@ -60,9 +60,20 @@ class DuckDBResource(ConfigurableResource):
                 pass
             self._lock = None
 
-    def query_df(self, sql: str, params=None) -> pd.DataFrame:
+    def query_df(
+        self,
+        sql: str,
+        params=None,
+        model: Optional[Type[Any]] = None,
+    ) -> Union[pd.DataFrame, list]:
+        """Run query and return DataFrame, or List[model] when model is provided.
+        Model must be a Pydantic BaseModel (uses model_validate)."""
         conn = self._conn_or_new()
-        return conn.execute(sql, params or []).df()
+        df = conn.execute(sql, params or []).df()
+        if model is None:
+            return df
+        rows = df.where(pd.notnull(df), None).to_dict(orient="records")
+        return [model.model_validate(row) for row in rows]
 
     def execute(self, sql: str, params=None) -> None:
         conn = self._conn_or_new()

@@ -39,10 +39,7 @@ Example:
 def build_user_prompt(items_text: list[str]) -> str:
     """Build user prompt for batch classification."""
     lines = [
-        "Classify each post. Return a JSON array of objects, one per post, in the same order:",
-        '[{"pain": 0.0-1.0, "would_pay": 0.0-1.0, "noise": 0.0-1.0, "confidence": 0.0-1.0, "lang": "en"}, ...]',
-        "",
-        "Posts:",
+        "# PROBLEM DATA TO ANALYZE:",
     ]
     for i, t in enumerate(items_text, 1):
         lines.append(f"--- Post {i} ---")

@@ -1,50 +1,12 @@
 """Shared helpers for raw data collection: GitHub parsing and materialization."""
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 from dagster import MaterializeResult
 
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from .model import (
-    CollectedItems,
-    RawComment,
-    RawItem,
-    RawReactionsGroups,
-)
 
-
-def parse_github_reaction_groups(
-    groups: Iterable[Dict[str, Any]],
-) -> List[RawReactionsGroups]:
-    """Convert GitHub reactionGroups[] into RawReactionsGroups list."""
-    return [
-        RawReactionsGroups(
-            type=(rg.get("content") or ""),
-            count=(rg.get("reactors") or rg.get("users") or {}).get("totalCount") or 0,
-        )
-        for rg in (groups or [])
-    ]
-
-
-def parse_github_comments_list(comments: Dict[str, Any] | None) -> List[RawComment]:
-    """Convert a GitHub comments object into a list[RawComment]."""
-    nodes = (comments or {}).get("nodes") or []
-    return [
-        RawComment(
-            body=((c or {}).get("body") or ""),
-            updated_at=((c or {}).get("updatedAt") or (c or {}).get("createdAt") or ""),
-            reactions=parse_github_reaction_groups(
-                (c or {}).get("reactionGroups") or []
-            ),
-        )
-        for c in nodes
-    ]
-
-
-def parse_github_labels(labels: Dict[str, Any] | None) -> List[str]:
-    """Convert a GitHub labels object into a flat list of label names."""
-    nodes = (labels or {}).get("nodes") or []
-    return [n.get("name") or "" for n in nodes if (n.get("name") or "").strip()]
+from .model import CollectedItems, RawItem
 
 
 async def materialize_raw(
@@ -71,8 +33,9 @@ async def materialize_raw(
                 "collector": meta,
             }
         )
+    items = [i.model_copy(update={"source": source, "collected_at": date}) for i in items]
     collected = CollectedItems(items, meta)
-    df = collected.to_df(source, date)
+    df = collected.to_df()
     inserted_attempt = db.upsert_df("bronze", "raw_items", df)
     return MaterializeResult(
         metadata={

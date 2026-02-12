@@ -10,6 +10,7 @@ from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.assets.raw.model import RawItem
+from burningdemand.utils.url import normalize_url, url_hash
 from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
@@ -80,10 +81,14 @@ class HackerNewsResource(ConfigurableResource):
                 body = it.get("story_text") or ""
                 if config.matches_keywords(f"{title} {body}", "hackernews"):
                     created_i = int(it.get("created_at_i") or 0)
+                    url = normalize_url(
+                        it.get("url")
+                        or f"https://news.ycombinator.com/item?id={it.get('objectID')}"
+                    )
                     items.append(
                         RawItem(
-                            url=it.get("url")
-                            or f"https://news.ycombinator.com/item?id={it.get('objectID')}",
+                            url=url,
+                            url_hash=url_hash(url),
                             title=title,
                             body=body[
                                 : config.issues.labeling.max_body_length_for_snippet
@@ -98,7 +103,7 @@ class HackerNewsResource(ConfigurableResource):
                             source_post_id=str(it.get("objectID") or ""),
                             comments_list=[],
                             comments_count=it.get("num_comments", 0) or 0,
-                            vote_count=it.get("points", 0) or 0,
+                            upvotes_count=it.get("points", 0) or 0,
                             post_type="story",
                             reactions_count=0,
                             org_name="",

@@ -10,6 +10,7 @@ from pyrate_limiter import Duration
 from pyrate_limiter.limiter_factory import create_sqlite_limiter
 
 from burningdemand.assets.raw.model import RawItem
+from burningdemand.utils.url import normalize_url, url_hash
 from burningdemand.utils.requests import batch_requests
 from burningdemand.utils.config import config
 from burningdemand.utils.url import iso_date_to_utc_bounds
@@ -92,9 +93,11 @@ class StackOverflowResource(ConfigurableResource):
                 body = it.get("body_markdown") or it.get("body") or ""
                 if config.matches_keywords(f"{title} {body}", "stackoverflow"):
                     created = it.get("creation_date")
+                    url = normalize_url(it.get("link") or "")
                     items.append(
                         RawItem(
-                            url=it.get("link") or "",
+                            url=url,
+                            url_hash=url_hash(url),
                             title=title,
                             body=body[
                                 : config.issues.labeling.max_body_length_for_snippet
@@ -109,7 +112,7 @@ class StackOverflowResource(ConfigurableResource):
                             source_post_id=str(it.get("question_id") or ""),
                             comments_list=[],
                             comments_count=it.get("answer_count", 0) or 0,
-                            vote_count=it.get("score", 0) or 0,
+                            upvotes_count=it.get("score", 0) or 0,
                             post_type="question",
                             reactions_count=0,
                             org_name="",

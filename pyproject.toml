@@ -9,6 +9,7 @@ dependencies = [
     "duckdb",
     "filelock",
     "pydantic",
+    "dacite",
     "sentence-transformers",
     "pyyaml",
     "python-dotenv",

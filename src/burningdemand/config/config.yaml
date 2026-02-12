@@ -28,10 +28,11 @@ classification:
   max_body_length: 1500
   max_comment_length: 300
   pain_threshold: 0.5
+  max_concurrent_batches: 10 # Run batches in parallel (litellm does not batch implicitly)
   llm:
-    model: "gpt-5-mini"
+    model: "gpt-5-nano"
     base_url: "https://llm.offbeatport.com"
-    max_tokens: 500
+    max_tokens: 5000
 
 issues:
   llm_concurrency_per_issues_partition: 8

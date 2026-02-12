@@ -1,12 +1,15 @@
 """LLM output schema for issue labeling."""
 
 import json
+import logging
 import re
 from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from burningdemand.utils.categories import CATEGORIES
+
+log = logging.getLogger(__name__)
 
 
 class IssueLabel(BaseModel):
@@ -50,5 +53,10 @@ class IssueLabel(BaseModel):
 def extract_first_json_obj(text: str) -> dict:
     m = re.search(r"\{.*\}", text, flags=re.S)
     if not m:
+        log.warning(
+            "No JSON object in model output. content_len=%s, content_preview=%r",
+            len(text) if text else 0,
+            (text or "")[:500],
+        )
         raise ValueError("No JSON object found in model output")
     return json.loads(m.group(0))

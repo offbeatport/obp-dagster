@@ -11,13 +11,9 @@ from dagster import (
 from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
-from .utils import (
-    clear_issues_data_for_date,
-    get_groups_for_date,
-    label_group_with_llm,
-    prepare_groups,
-    save_results,
-)
+from .queries import clear_issues_data_for_date, get_groups_for_date, prepare_groups
+from .labeling import label_group_with_llm
+from .persist import save_results
 
 
 @asset(

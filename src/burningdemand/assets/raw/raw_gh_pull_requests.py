@@ -7,14 +7,15 @@ from dagster import AssetExecutionContext, MaterializeResult, asset
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.github_resource import GitHubResource
-from .model import RawItem
 from burningdemand.utils.config import config
-from .materialize import (
-    materialize_raw,
-    parse_github_comments_list,
-    parse_github_labels,
-    parse_github_reaction_groups,
+from burningdemand.utils.url import normalize_url, url_hash
+
+from .github import (
+    get_comments,
+    get_reactions_groups,
 )
+from .model import RawItem
+from .materialize import materialize_raw
 
 
 def _to_raw(d: Dict[str, Any]) -> RawItem:
@@ -25,25 +26,31 @@ def _to_raw(d: Dict[str, Any]) -> RawItem:
     license_name = license_info.get("spdxId") or ""
     body = d.get("body") or ""
     meta = f"Pull Request: [state={d.get('state')}, merged={d.get('merged')}] \n"
+    comments = d.get("comments") or {}
+    labels = d.get("labels") or {}
+
+    url = normalize_url(d.get("url") or "")
     return RawItem(
-        url=d.get("url") or "",
+        url=url,
+        url_hash=url_hash(url),
         title=d.get("title") or "",
         body=f"{meta}{body}".strip(),
         created_at=d.get("createdAt") or "",
         org_name=org,
         product_name=product,
+        product_desc=repository.get("description") or "",
         product_stars=repository.get("stargazerCount") or 0,
         product_forks=repository.get("forkCount") or 0,
         product_watchers=(repository.get("watchers") or {}).get("totalCount") or 0,
         source_post_id=str(d.get("id") or ""),
         license=license_name,
-        comments_list=parse_github_comments_list(d.get("comments")),
-        comments_count=((d.get("comments") or {}).get("totalCount") or 0),
-        reactions_groups=parse_github_reaction_groups(d.get("reactionGroups") or []),
-        reactions_count=((d.get("reactions") or {}).get("totalCount") or 0),
+        comments_list=get_comments(d),
+        comments_count=comments.get("totalCount") or 0,
+        reactions_groups=get_reactions_groups(d),
+        reactions_count=(d.get("reactions") or {}).get("totalCount") or 0,
         upvotes_count=0,
         post_type="pull_request",
-        labels=parse_github_labels(d.get("labels")),
+        labels=[n.get("name") or "" for n in (labels.get("nodes"))],
     )
 
 
