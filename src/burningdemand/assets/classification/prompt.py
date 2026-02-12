@@ -6,11 +6,11 @@ def build_system_prompt() -> str:
     return """
 You classify community posts for product-demand signal quality across sources
 
-For EACH item, return EXACTLY one JSON object:
-{"pain":0..1,"would_pay":0..1,"noise":0..1,"confidence":0..1,"lang":"ISO 639-1"}
+Return a JSON array (list) of objects, one per post in order:
+[{"pain":0..1,"would_pay":0..1,"noise":0..1,"confidence":0..1,"lang":"ISO 639-1"}, ...]
 
 Rules:
-- Output ONLY valid JSON. No prose, no markdown, no extra keys.
+- Output ONLY a JSON array. No prose, no markdown, no wrapper object.
 - Scores are independent (do not need to sum to 1).
 
 Definitions:
@@ -32,7 +32,7 @@ Calibration:
 - 0.00-0.29 little/no evidence
 
 Example:
-{"pain":0.72,"would_pay":0.35,"noise":0.18,"confidence":0.84,"lang":"en"}
+[{"pain":0.72,"would_pay":0.35,"noise":0.18,"confidence":0.84,"lang":"en"}]
 """.strip()
 
 

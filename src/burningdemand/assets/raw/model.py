@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -52,10 +53,10 @@ class RawItem(BaseModel):
     url: str = ""
     url_hash: str = ""
     source: str = ""
-    collected_at: str = ""
+    collected_at: Optional[datetime] = None
     title: str = ""
     body: str = ""
-    created_at: str = ""
+    created_at: Optional[datetime] = None
     source_post_id: str = ""
     comments_list: List[RawComment] = []
     comments_count: Optional[int] = 0
@@ -82,16 +83,33 @@ class RawItem(BaseModel):
                 return []
         return v
 
-    def to_text(self, max_body: int, max_comment: int) -> str:
+    def to_llm_prompt_text(self, max_body: int, max_comment: int) -> str:
+        def fmt_reactions(groups: List[RawReactionsGroup]) -> str:
+            if not groups:
+                return "0"
+            return ", ".join(f"{g.type}:{g.count}" for g in groups if g.type or g.count)
+
+        labels_str = ", ".join(self.labels) if self.labels else "N/A"
+        comment_lines = []
+        for c in self.comments_list:
+            body = truncate_middle(c.body or "", max_comment)
+            rx = fmt_reactions(c.reactions)
+            rx_total = sum(r.count for r in c.reactions)
+            comment_lines.append(f"[{rx_total} reactions: {rx}]\n{body}" if rx else body)
+
         parts = [
             f"Title: {self.title or ''}",
+            f"Labels: {labels_str}",
             f"Body: {truncate_middle(self.body or '', max_body)}",
+            f"Product: {self.product_name or ''}",
+            f"Description: {truncate_middle(self.product_desc or '', 500)}",
+            f"Stars: {self.product_stars or 0} | Forks: {self.product_forks or 0} | Watchers: {self.product_watchers or 0}",
+            f"Type: {self.source or ''}",
+            f"UpVotes: {self.upvotes_count or 0}",
+            f"Reactions: {self.reactions_count or 0} ({fmt_reactions(self.reactions_groups)})",
+            "Comments:\n" + ("\n".join(comment_lines) if comment_lines else "N/A"),  
         ]
-        comments = "\n".join(
-            truncate_middle(c.body or "", max_comment) for c in self.comments_list
-        )
-        if comments:
-            parts.append(f"Comments:\n{comments}")
+
         return "\n\n".join(parts)
 
 

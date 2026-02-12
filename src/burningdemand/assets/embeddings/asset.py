@@ -13,28 +13,6 @@ from burningdemand.resources.duckdb_resource import DuckDBResource
 from burningdemand.resources.embedding_resource import EmbeddingResource
 
 
-def _apply_hard_filter(
-    context: AssetExecutionContext,
-    items: pd.DataFrame,
-) -> tuple[pd.DataFrame, int, int]:
-    """Drop rows that fail hard constraints for embeddings."""
-    input_count = len(items)
-    license_mask = items["license"].fillna("").astype(str).str.strip() != ""
-    filtered_out = int((~license_mask).sum())
-    filtered_items = items[license_mask].copy()
-
-    context.log.info(
-        "Hard filter: filtered out %s/%s items (missing license)",
-        filtered_out,
-        input_count,
-    )
-
-    if len(filtered_items) == 0:
-        context.log.info("No items left after hard filter")
-
-    return filtered_items, filtered_out, input_count
-
-
 @asset(
     partitions_def=daily_partitions,
     group_name="silver",
@@ -73,17 +51,9 @@ def embeddings(
         [date, date, pain_threshold],
     )
 
-    items, hard_filtered_out, before_hard_filter = _apply_hard_filter(context, items)
-
     if len(items) == 0:
         context.log.info("No new items to process for %s", date)
-        return MaterializeResult(
-            metadata={
-                "embeddings": 0,
-                "hard_filtered_out": int(hard_filtered_out),
-                "hard_filter_input": int(before_hard_filter),
-            }
-        )
+        return MaterializeResult(metadata={"embeddings": 0})
 
     total = 0
     batch_size = config.embeddings.asset_batch_size
@@ -145,10 +115,5 @@ def embeddings(
         )
 
     return MaterializeResult(
-        metadata={
-            "embeddings": int(total),
-            "batch_size": int(batch_size),
-            "hard_filtered_out": int(hard_filtered_out),
-            "hard_filter_input": int(before_hard_filter),
-        }
+        metadata={"embeddings": int(total), "batch_size": int(batch_size)}
     )

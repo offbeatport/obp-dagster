@@ -34,7 +34,7 @@ def _to_raw(d: Dict[str, Any]) -> RawItem:
         url_hash=url_hash(url),
         title=d.get("title") or "",
         body=d.get("body") or "",
-        created_at=d.get("createdAt") or "",
+        created_at=d.get("createdAt") or None,
         org_name=org,
         product_name=product,
         product_desc=repository.get("description") or "",

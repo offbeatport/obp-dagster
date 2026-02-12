@@ -38,11 +38,6 @@ UPSERT_COLUMNS = [
 ]
 
 
-def _item_to_text(item: RawItem, max_body: int, max_comment: int) -> str:
-    """Build truncated text for one item: title + body + comments."""
-    return item.to_text(max_body, max_comment)
-
-
 def _label_to_row(label: PainClassification, url_hash: str, date: str) -> dict:
     """Convert LLM label to DB row."""
     return {
@@ -66,6 +61,7 @@ async def _classify_batch(
     cfg = config.classification
     user_prompt = build_user_prompt(items_text)
     for attempt in range(LLM_RETRY_ATTEMPTS):
+        content = ""
         try:
             response = await acompletion(
                 model=cfg.llm.model,
@@ -103,6 +99,16 @@ async def _classify_batch(
                 for i in range(n)
             ]
         except Exception as e:
+            if content:
+                max_preview = 2000
+                preview = content[:max_preview] + (
+                    "..." if len(content) > max_preview else ""
+                )
+                context.log.error(
+                    "Classification parse error. Raw LLM response (len=%s): %s",
+                    len(content),
+                    preview,
+                )
             if attempt < LLM_RETRY_ATTEMPTS - 1:
                 delay = LLM_RETRY_BACKOFF[attempt]
                 context.log.warning(
@@ -133,7 +139,7 @@ async def classifications(
 
     items: List[RawItem] = db.query_df(
         """
-            SELECT url_hash, title, body, comments_list
+            SELECT *
             FROM bronze.raw_items
             WHERE collected_at = ?
                 AND comments_count > 0
@@ -164,7 +170,7 @@ async def classifications(
 
     sem = asyncio.Semaphore(max_concurrent)
 
-    async def run_batch(batch_num: int, batch: List[RawItem]) -> int:
+    async def run_batch(batch_num: int, batch: List[RawItem]) -> int | Exception:
         async with sem:
             context.log.info(
                 "Batch %s of %s: classifying %s items",
@@ -174,9 +180,10 @@ async def classifications(
             )
             url_hashes = [item.url_hash for item in batch]
             items_text = [
-                _item_to_text(item, cfg.max_body_length, cfg.max_comment_length)
+                item.to_llm_prompt_text(cfg.max_body_length, cfg.max_comment_length)
                 for item in batch
             ]
+
             rows = await _classify_batch(context, items_text, url_hashes, date)
             if rows:
                 db.upsert_df(
@@ -188,15 +195,35 @@ async def classifications(
         (i // cfg.batch_size + 1, items[i : i + cfg.batch_size])
         for i in range(0, len(items), cfg.batch_size)
     ]
-    counts = await asyncio.gather(
-        *[run_batch(batch_num, batch) for batch_num, batch in batches]
+    results = await asyncio.gather(
+        *[run_batch(batch_num, batch) for batch_num, batch in batches],
+        return_exceptions=True,
     )
-    total = sum(counts)
+    total = 0
+    failed = 0
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            failed += 1
+            context.log.error(
+                "Batch %s failed (others continue): %s",
+                batches[i][0],
+                r,
+            )
+        else:
+            total += r
+    if failed:
+        context.log.warning(
+            "%s of %s batches failed; %s items classified successfully",
+            failed,
+            len(batches),
+            total,
+        )
 
     return MaterializeResult(
         metadata={
             "classified": total,
             "batch_size": cfg.batch_size,
             "pain_threshold": cfg.pain_threshold,
+            "failed_batches": failed,
         }
     )
