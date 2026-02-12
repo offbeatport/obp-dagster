@@ -27,7 +27,7 @@ classification:
   batch_size: 10
   max_body_length: 1500
   max_comment_length: 300
-  pain_threshold: 0.5
+  pain_threshold: 0.4
   max_concurrent_batches: 10 # Run batches in parallel (litellm does not batch implicitly)
   llm:
     model: "gpt-5-nano"

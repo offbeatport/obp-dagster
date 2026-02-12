@@ -55,7 +55,9 @@ async def live_issues(
             {
                 "title": str(issue["canonical_title"]),
                 "desc_problem": str(issue.get("desc_problem") or ""),
-                "desc_current_solutions": str(issue.get("desc_current_solutions") or ""),
+                "desc_current_solutions": str(
+                    issue.get("desc_current_solutions") or ""
+                ),
                 "desc_impact": str(issue.get("desc_impact") or ""),
                 "desc_details": str(issue.get("desc_details") or ""),
                 "category": str(issue["category"]).split(","),

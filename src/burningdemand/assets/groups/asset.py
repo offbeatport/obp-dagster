@@ -11,9 +11,21 @@ from dagster import (
     MaterializeResult,
     asset,
 )
+from pydantic import BaseModel
+
 from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
+
+
+class EmbeddingWithMetadata(BaseModel):
+    """Result of embedding + raw_items join for clustering."""
+
+    url_hash: str = ""
+    embedding: list[float] = []
+    vote_count: int = 0
+    reactions_count: int = 0
+    comments_count: int = 0
 
 
 def clear_group_data_for_date(db: DuckDBResource, date: str) -> None:
@@ -24,9 +36,9 @@ def clear_group_data_for_date(db: DuckDBResource, date: str) -> None:
 
 def load_embeddings_in_window(
     db: DuckDBResource, window_start: str, date: str
-) -> Tuple[Optional[pd.DataFrame], Optional[np.ndarray]]:
+) -> Tuple[Optional[list[EmbeddingWithMetadata]], Optional[np.ndarray]]:
     """Load items with embeddings in [window_start, date]. Returns (data, embeddings_array) or (None, None) if empty."""
-    data = db.query_df(
+    items: list[EmbeddingWithMetadata] = db.query_df(
         """
         SELECT
             e.url_hash,
@@ -36,15 +48,16 @@ def load_embeddings_in_window(
             b.comments_count
         FROM silver.embeddings e
         JOIN bronze.raw_items b ON e.url_hash = b.url_hash
-        WHERE b.created_at >= ?
-          AND b.created_at <= ?
+        WHERE b.collected_at >= ?
+          AND b.collected_at <= ?
         """,
         [window_start, date],
+        model=EmbeddingWithMetadata,
     )
-    if len(data) == 0:
+    if len(items) == 0:
         return None, None
-    embeddings_array = np.array(data["embedding"].tolist(), dtype=np.float32)
-    return data, embeddings_array
+    embeddings_array = np.array([i.embedding for i in items], dtype=np.float32)
+    return items, embeddings_array
 
 
 def run_hdbscan(embeddings_array: np.ndarray) -> np.ndarray:
@@ -68,7 +81,7 @@ def run_hdbscan(embeddings_array: np.ndarray) -> np.ndarray:
 
 
 def compute_group_metrics(
-    data: pd.DataFrame,
+    data: list[EmbeddingWithMetadata],
     embeddings_array: np.ndarray,
     labels: np.ndarray,
 ) -> Tuple[dict, int, float]:
@@ -82,13 +95,14 @@ def compute_group_metrics(
     for gid in group_ids:
         group_mask = labels == gid
         group_points = embeddings_array[group_mask]
-        group_data = data.iloc[np.where(group_mask)[0]]
+        indices = np.where(group_mask)[0]
+        group_items = [data[i] for i in indices]
         centroid = np.mean(group_points, axis=0)
         distances = np.linalg.norm(group_points - centroid, axis=1)
         mean_distance = float(np.mean(distances))
-        vote_sum = int(group_data["vote_count"].sum())
-        reaction_sum = int(group_data["reactions_count"].sum())
-        comment_sum = int(group_data["comments_count"].sum())
+        vote_sum = sum(i.vote_count for i in group_items)
+        reaction_sum = sum(i.reactions_count for i in group_items)
+        comment_sum = sum(i.comments_count for i in group_items)
         authority_score = vote_sum + comment_sum * 0.5 + reaction_sum * 0.5
         group_metrics[int(gid)] = {
             "size": int(np.sum(group_mask)),
@@ -104,7 +118,7 @@ def compute_group_metrics(
 def persist_groups(
     db: DuckDBResource,
     date: str,
-    data: pd.DataFrame,
+    data: list[EmbeddingWithMetadata],
     labels: np.ndarray,
     group_metrics: dict,
     outlier_ratio: float,
@@ -113,7 +127,7 @@ def persist_groups(
     assignments_df = pd.DataFrame(
         [
             {
-                "url_hash": data["url_hash"].iloc[i],
+                "url_hash": data[i].url_hash,
                 "group_date": date,
                 "group_id": int(labels[i]),
             }
@@ -165,9 +179,7 @@ def groups(
 ) -> MaterializeResult:
     date = context.partition_key
     date_obj = datetime.strptime(date, "%Y-%m-%d")
-    window_days = (
-        config.clustering.rolling_window_days - 1
-    )
+    window_days = config.clustering.rolling_window_days - 1
     window_start = (date_obj - timedelta(days=window_days)).strftime("%Y-%m-%d")
 
     context.log.info(
@@ -183,6 +195,8 @@ def groups(
                 "groups": 0,
                 "items": 0,
                 "noise": 0,
+                "window_start": window_start,
+                "window_end": date,
                 "status": "no_items_in_window",
             }
         )
@@ -205,9 +219,7 @@ def groups(
         else sizes_sorted[-1] if sizes_sorted else 0
     )
     authority_scores = (
-        [m["authority_score"] for m in group_metrics.values()]
-        if group_metrics
-        else [0]
+        [m["authority_score"] for m in group_metrics.values()] if group_metrics else [0]
     )
 
     return MaterializeResult(

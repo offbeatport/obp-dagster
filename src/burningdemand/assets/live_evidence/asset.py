@@ -14,6 +14,7 @@ from burningdemand.resources.pocketbase_resource import PocketBaseResource
 _SOURCE_TYPE_MAP = {
     "gh_issues": "github_issue",
     "gh_discussions": "github_discussion",
+    "gh_pull_requests": "github_pull_request",
     "rd": "reddit_thread",
     "so": "stackoverflow_question",
     "hn": "other",

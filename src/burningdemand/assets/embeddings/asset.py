@@ -7,6 +7,7 @@ from dagster import (
     asset,
 )
 
+from burningdemand.assets.raw.model import RawItem
 from burningdemand.utils.config import config
 from burningdemand.partitions import daily_partitions
 from burningdemand.resources.duckdb_resource import DuckDBResource
@@ -37,8 +38,9 @@ def embeddings(
 
     # Load raw items for this date, joined with classifications.
     # Only embed items with pain >= threshold (classification gate before clustering).
+    # SELECT b.* keeps only raw_items columns so we can hydrate as RawItem.
     pain_threshold = config.classification.pain_threshold
-    items = db.query_df(
+    items: list[RawItem] = db.query_df(
         """
         SELECT b.*
         FROM bronze.raw_items b
@@ -49,6 +51,7 @@ def embeddings(
           AND pc.pain_prob >= ?
         """,
         [date, date, pain_threshold],
+        model=RawItem,
     )
 
     if len(items) == 0:
@@ -65,32 +68,24 @@ def embeddings(
 
     for i in range(0, len(items), batch_size):
         batch_num = (i // batch_size) + 1
-        batch = items.iloc[i : i + batch_size].copy()
+        batch = items[i : i + batch_size]
 
         context.log.info(
             f"Batch {batch_num}/{total_batches}: Generating embeddings for {len(batch)} items..."
         )
 
-        texts = (
-            (
-                batch["title"].fillna("").astype(str)
-                + " "
-                + batch["body"].fillna("").astype(str)
-            )
-            .str.strip()
-            .tolist()
-        )
+        cfg = config.classification
+        texts = [
+            item.to_llm_prompt_text(cfg.max_body_length, cfg.max_comment_length)
+            for item in batch
+        ]
 
         embs = embedding.encode(texts)  # ndarray (n, 384)
-        # store embedding as list[float] per row (DuckDB FLOAT[384])
-        batch["embedding"] = [e.tolist() for e in embs]
-        batch["embedding_date"] = date
-
         silver_df = pd.DataFrame(
             {
-                "url_hash": batch["url_hash"],
-                "embedding": batch["embedding"],
-                "embedding_date": batch["embedding_date"],
+                "url_hash": [item.url_hash for item in batch],
+                "embedding": [e.tolist() for e in embs],
+                "embedding_date": [date] * len(batch),
             }
         )
 

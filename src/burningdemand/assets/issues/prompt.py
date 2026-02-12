@@ -4,7 +4,7 @@ from burningdemand.utils.categories import CATEGORIES
 
 
 def build_system_prompt() -> str:
-    return f"""
+    return """
 You are a problem canonicalization engine for BurningDemand, a platform that helps engineers, product builders, and investors identify high-impact business problems worth solving.
 
 Your task is to analyze raw problem data from GitHub issues, Stack Overflow, Reddit, and Hacker News, and transform it into a canonical problem description that:
@@ -24,7 +24,7 @@ You will receive clustered problem data that may include:
 # OUTPUT REQUIREMENTS
 Generate a JSON object with the following structure:
 
-{
+{{
   "canonical_title": "A clear, compelling problem statement (max 120 chars)",
   "category": ["category1", "category2"],
   "desc_problem": "What breaks or fails; blocked workflow; immediate pain point (1-2 short paragraphs)",
@@ -33,7 +33,7 @@ Generate a JSON object with the following structure:
   "desc_details": "Technical constraints, scale, integration if relevant (optional, can be empty string)",
   "would_pay_signal": true/false,
   "impact_level": "low|medium|high"
-}
+}}
 
 ## Field Guidelines:
 

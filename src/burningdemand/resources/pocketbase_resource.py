@@ -5,6 +5,29 @@ import requests
 from dagster import ConfigurableResource
 
 
+def _format_pb_error(resp: Optional[requests.Response], prefix: str) -> str:
+    """
+    Format PocketBase error responses, including the `data` object when present.
+
+    PocketBase error JSON is usually:
+    {
+      "code": 400,
+      "message": "Failed to authenticate.",
+      "data": { ... validation errors ... }
+    }
+    """
+    if resp is None:
+        return f"{prefix}: no HTTP response available"
+    try:
+        payload = resp.json()
+    except ValueError:
+        # Not JSON, just return raw text
+        return f"{prefix} ({resp.status_code}): {resp.text}"
+
+    # Always show the full PocketBase error payload so we can see "data" details.
+    return f"{prefix} ({resp.status_code}): {payload}"
+
+
 class PocketBaseResource(ConfigurableResource):
     """
     Dagster resource for PocketBase client.
@@ -42,13 +65,18 @@ class PocketBaseResource(ConfigurableResource):
     def _login(self) -> None:
         """Authenticate with PocketBase and store token."""
         url = f"{self._base_url}/api/collections/users/auth-with-password"
-        resp = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            json={"identity": self.email, "password": self.password},
-            timeout=self.timeout_s,
-        )
-        resp.raise_for_status()
+        resp: Optional[requests.Response] = None
+        try:
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json={"identity": self.email, "password": self.password},
+                timeout=self.timeout_s,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            # Include full PocketBase error payload (message + data) when available
+            raise RuntimeError(_format_pb_error(resp, "PocketBase login failed")) from e
         data = resp.json()
         token = data.get("token")
         if not token:
@@ -84,13 +112,19 @@ class PocketBaseResource(ConfigurableResource):
         out: list[Dict[str, Any]] = []
         page = 1
         while True:
-            resp = requests.get(
-                url,
-                headers=self._headers(),
-                params={"filter": filter_expr, "perPage": per_page, "page": page},
-                timeout=self.timeout_s,
-            )
-            resp.raise_for_status()
+            resp: Optional[requests.Response] = None
+            try:
+                resp = requests.get(
+                    url,
+                    headers=self._headers(),
+                    params={"filter": filter_expr, "perPage": per_page, "page": page},
+                    timeout=self.timeout_s,
+                )
+                resp.raise_for_status()
+            except Exception as e:
+                raise RuntimeError(
+                    _format_pb_error(resp, f"PocketBase GET {collection} records failed")
+                ) from e
             data = resp.json()
             items = data.get("items") or []
             out.extend(items)
@@ -104,10 +138,16 @@ class PocketBaseResource(ConfigurableResource):
         """Create a new record in a collection."""
         self._ensure_auth()
         url = f"{self._base_url}/api/collections/{collection}/records"
-        resp = requests.post(
-            url, headers=self._headers(), json=payload, timeout=self.timeout_s
-        )
-        resp.raise_for_status()
+        resp: Optional[requests.Response] = None
+        try:
+            resp = requests.post(
+                url, headers=self._headers(), json=payload, timeout=self.timeout_s
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            raise RuntimeError(
+                _format_pb_error(resp, f"PocketBase CREATE {collection} failed")
+            ) from e
         return resp.json()
 
     def update(
@@ -116,10 +156,18 @@ class PocketBaseResource(ConfigurableResource):
         """Update an existing record in a collection."""
         self._ensure_auth()
         url = f"{self._base_url}/api/collections/{collection}/records/{record_id}"
-        resp = requests.patch(
-            url, headers=self._headers(), json=payload, timeout=self.timeout_s
-        )
-        resp.raise_for_status()
+        resp: Optional[requests.Response] = None
+        try:
+            resp = requests.patch(
+                url, headers=self._headers(), json=payload, timeout=self.timeout_s
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            raise RuntimeError(
+                _format_pb_error(
+                    resp, f"PocketBase UPDATE {collection}/{record_id} failed"
+                )
+            ) from e
         return resp.json()
 
     def upsert_ing_item(self, item: Dict[str, Any]) -> Tuple[str, str]:
