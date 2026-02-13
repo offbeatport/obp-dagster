@@ -123,7 +123,9 @@ class PocketBaseResource(ConfigurableResource):
                 resp.raise_for_status()
             except Exception as e:
                 raise RuntimeError(
-                    _format_pb_error(resp, f"PocketBase GET {collection} records failed")
+                    _format_pb_error(
+                        resp, f"PocketBase GET {collection} records failed"
+                    )
                 ) from e
             data = resp.json()
             items = data.get("items") or []

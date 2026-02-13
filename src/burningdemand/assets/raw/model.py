@@ -95,19 +95,21 @@ class RawItem(BaseModel):
             body = truncate_middle(c.body or "", max_comment)
             rx = fmt_reactions(c.reactions)
             rx_total = sum(r.count for r in c.reactions)
-            comment_lines.append(f"[{rx_total} reactions: {rx}]\n{body}" if rx else body)
+            comment_lines.append(
+                f"[{rx_total} reactions: {rx}]\n{body}" if rx else body
+            )
 
         parts = [
             f"Title: {self.title or ''}",
             f"Labels: {labels_str}",
             f"Body: {truncate_middle(self.body or '', max_body)}",
-            f"Product: {self.product_name or ''}",
-            f"Description: {truncate_middle(self.product_desc or '', 500)}",
-            f"Stars: {self.product_stars or 0} | Forks: {self.product_forks or 0} | Watchers: {self.product_watchers or 0}",
+            f"Product Name: {self.product_name or ''}",
+            f"Product Description: {truncate_middle(self.product_desc or '', 500)}",
+            f"Product Stars: {self.product_stars or 0} | Product Forks: {self.product_forks or 0} | Product Watchers: {self.product_watchers or 0}",
             f"Type: {self.source or ''}",
             f"UpVotes: {self.upvotes_count or 0}",
             f"Reactions: {self.reactions_count or 0} ({fmt_reactions(self.reactions_groups)})",
-            "Comments:\n" + ("\n".join(comment_lines) if comment_lines else "N/A"),  
+            "Comments:\n" + ("\n".join(comment_lines) if comment_lines else "N/A"),
         ]
 
         return "\n\n".join(parts)

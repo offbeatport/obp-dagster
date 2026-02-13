@@ -22,8 +22,6 @@ Definitions:
 Guidance:
 - High pain needs specific impact (blocked, production/customer impact, repeated failed workaround).
 - High would_pay needs explicit commercial intent (would pay, budget, pricing, buy, switching for value/cost).
-- PRs often skew implementation/noise unless impact is explicit.
-- HN/Reddit opinions are not pain unless concrete impact is stated.
 
 Calibration:
 - 0.85-1.00 strong explicit evidence
